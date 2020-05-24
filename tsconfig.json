@@ -1,0 +1,12 @@
+{
+"compilerOptions": {
+    "types" : [
+      "babylonjs"
+    ],
+    "lib" : [
+      "dom",
+      "es2015",
+      "es2015.promise"
+    ]
+  }
+}
