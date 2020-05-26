@@ -53,33 +53,36 @@ window.addEventListener('DOMContentLoaded', () => {
         }
         updatePhysics(physBox) {
             // basic sweep and prune 
-            if (physBox.getVelocity().y != 0) {
-                physBox.getPos().y += physBox.getVelocity().y;
-                let hit = null;
-                let yIndex = this.yIndexes.get(physBox);
-                for (let i = yIndex; i < this.physBoxesY.length; i++) {
-                    let candiate = this.physBoxesY[i];
-                    if (physBox.intersects(candiate)) {
-                        hit = candiate;
-                        break;
+            const lastVelocity = physBox.getVelocity().y;
+            if (lastVelocity != 0) {
+                physBox.getPos().y += lastVelocity;
+                if (lastVelocity < 0) {
+                    let hit = null;
+                    let yIndex = this.yIndexes.get(physBox);
+                    for (let i = yIndex; i < this.physBoxesY.length; i++) {
+                        let candiate = this.physBoxesY[i];
+                        if (physBox.intersects(candiate)) {
+                            hit = candiate;
+                            break;
+                        }
+                        if (candiate.getSide(Sides.Top) < physBox.getSide(Sides.Bottom)) {
+                            // if (Math.random() > 0.9)
+                            //     console.log(i - yIndex);
+                            break;
+                        }
                     }
-                    if (candiate.getSide(Sides.Top) < physBox.getSide(Sides.Bottom)) {
-                        // if (Math.random() > 0.9)
-                        //     console.log(i - yIndex);
-                        break;
+                    if (hit) {
+                        physBox.setSide(Sides.Bottom, hit.getSide(Sides.Top) + 0.001);
                     }
-                }
-                if (hit) {
-                    physBox.setSide(Sides.Bottom, hit.getSide(Sides.Top) + 0.001);
-                }
-                while (((yIndex + 1) < this.physBoxesY.length) && (this.physBoxesY[yIndex].getSide(Sides.Top) < this.physBoxesY[yIndex + 1].getSide(Sides.Top))) {
-                    const a = this.physBoxesY[yIndex];
-                    const b = this.physBoxesY[yIndex + 1];
-                    this.physBoxesY[yIndex] = b;
-                    this.physBoxesY[yIndex + 1] = a;
-                    this.yIndexes.set(a, yIndex + 1);
-                    this.yIndexes.set(b, yIndex);
-                    yIndex = yIndex + 1;
+                    while (((yIndex + 1) < this.physBoxesY.length) && (this.physBoxesY[yIndex].getSide(Sides.Top) < this.physBoxesY[yIndex + 1].getSide(Sides.Top))) {
+                        const a = this.physBoxesY[yIndex];
+                        const b = this.physBoxesY[yIndex + 1];
+                        this.physBoxesY[yIndex] = b;
+                        this.physBoxesY[yIndex + 1] = a;
+                        this.yIndexes.set(a, yIndex + 1);
+                        this.yIndexes.set(b, yIndex);
+                        yIndex = yIndex + 1;
+                    }
                 }
             }
         }
