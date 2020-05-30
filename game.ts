@@ -61,39 +61,69 @@ class Game {
     public initOrdering() { 
         this.physBoxesY.sort((b, a) => a.getSide(Sides.Top) - b.getSide(Sides.Top)).forEach((pbox, idx) => this.yIndexes.set(pbox, idx));
     }
+
+    private getCollisions(physBox: PhysBox) {
+        let hit = null;
+        let yIndex = this.yIndexes.get(physBox);
+        for (let i = yIndex; i < this.physBoxesY.length; i++) {
+            let candiate = this.physBoxesY[i];
+            if (physBox.intersects(candiate)) {
+                hit = candiate;
+                break;
+            }
+            if (candiate.getSide(Sides.Top) < physBox.getSide(Sides.Bottom)) {
+                // if (Math.random() > 0.99)
+                //     console.log(yIndex - i);
+                break;
+            }
+        }
+        for (let i = yIndex; i >= 0; i--) {
+            let candiate = this.physBoxesY[i];
+            if (physBox.intersects(candiate)) {
+                hit = candiate;
+                break;
+            }
+            if (candiate.getSide(Sides.Bottom) > physBox.getSide(Sides.Top)) {
+                // if (Math.random() > 0.99)
+                //     console.log(yIndex - i);
+                break;
+            }
+        }
+        return hit;
+    }
+    private reshuffle(physBox: PhysBox) {
+        let yIndex = this.yIndexes.get(physBox);
+        while (((yIndex+1) < this.physBoxesY.length) && (this.physBoxesY[yIndex].getSide(Sides.Top) < this.physBoxesY[yIndex+1].getSide(Sides.Top))) {
+            const a = this.physBoxesY[yIndex];
+            const b = this.physBoxesY[yIndex+1];
+            this.physBoxesY[yIndex] = b;
+            this.physBoxesY[yIndex+1] = a;
+            this.yIndexes.set(a, yIndex+1);
+            this.yIndexes.set(b, yIndex);
+            yIndex = yIndex+1;
+        }
+        while (((yIndex+1) < this.physBoxesY.length) && (this.physBoxesY[yIndex].getSide(Sides.Top) < this.physBoxesY[yIndex+1].getSide(Sides.Top))) {
+            const a = this.physBoxesY[yIndex];
+            const b = this.physBoxesY[yIndex+1];
+            this.physBoxesY[yIndex] = b;
+            this.physBoxesY[yIndex+1] = a;
+            this.yIndexes.set(a, yIndex+1);
+            this.yIndexes.set(b, yIndex);
+            yIndex = yIndex+1;
+        }
+    }
     public updatePhysics(physBox: PhysBox) {
         // basic sweep and prune 
         const lastVelocity = physBox.getVelocity().y;
         if (lastVelocity != 0) {
             physBox.getPos().y += lastVelocity;
-            if (lastVelocity < 0) {
-                let hit = null;
-                let yIndex = this.yIndexes.get(physBox);
-                for (let i = yIndex; i < this.physBoxesY.length; i++) {
-                    let candiate = this.physBoxesY[i];
-                    if (physBox.intersects(candiate)) {
-                        hit = candiate;
-                        break;
-                    }
-                    if (candiate.getSide(Sides.Top) < physBox.getSide(Sides.Bottom)) {
-                        // if (Math.random() > 0.9)
-                        //     console.log(i - yIndex);
-                        break;
-                    }
-                }
-                if (hit) {
-                    physBox.setSide(Sides.Bottom, hit.getSide(Sides.Top) + 0.001);
-                }
-                while (((yIndex+1) < this.physBoxesY.length) && (this.physBoxesY[yIndex].getSide(Sides.Top) < this.physBoxesY[yIndex+1].getSide(Sides.Top))) {
-                    const a = this.physBoxesY[yIndex];
-                    const b = this.physBoxesY[yIndex+1];
-                    this.physBoxesY[yIndex] = b;
-                    this.physBoxesY[yIndex+1] = a;
-                    this.yIndexes.set(a, yIndex+1);
-                    this.yIndexes.set(b, yIndex);
-                    yIndex = yIndex+1;
-                }
+            let hit = this.getCollisions(physBox);
+            if (lastVelocity < 0 && hit) {
+                physBox.setSide(Sides.Bottom, hit.getSide(Sides.Top) + 0.001);
+            } else if (lastVelocity > 0 && hit) {
+                physBox.setSide(Sides.Top, hit.getSide(Sides.Bottom) - 0.001);
             }
+            this.reshuffle(physBox);
         }
     }
     private physBoxes: Array<PhysBox> = [];
