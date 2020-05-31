@@ -17,6 +17,7 @@ scene.fogStart = 20.0;
 scene.fogEnd = 60.0;
 scene.fogColor = new BABYLON.Color3(0.2, 1.0, 1.0);
 scene.clearColor = new BABYLON.Color4(0.2, 1.0, 1.0, 1.0);
+scene.ambientColor = new BABYLON.Color3(0.2, 0.2, 0.2);
 
 // Parameters: alpha, beta, radius, target position, scene
 const camera = new BABYLON.ArcRotateCamera("Camera", 0, 0, 10, new BABYLON.Vector3(0, 0, 0), scene);
@@ -24,6 +25,10 @@ camera.setPosition(new BABYLON.Vector3(0, 0, 20));
 camera.attachControl(canvas, true);
 camera.beta = 0.3700715949591232;
 camera.alpha = 4.71238898039;
+camera.lowerAlphaLimit = 4.71238898039;
+camera.upperAlphaLimit = 4.71238898039;
+camera.lowerBetaLimit = 0.3700715949591232;
+camera.upperBetaLimit = Math.PI / 2;
 
 
 // create lava
@@ -175,7 +180,9 @@ const SPS = new BABYLON.SolidParticleSystem("SPS", scene);
 let idx = 0;
 var box = BABYLON.MeshBuilder.CreateBox('', {size: 1}, scene);
 const testMaterial = new BABYLON.StandardMaterial('', scene);
-testMaterial.diffuseTexture = new BABYLON.Texture('/resources/images/testBox.png', scene);
+testMaterial.diffuseTexture = new BABYLON.Texture('https://raw.githubusercontent.com/lattesipper/endlessplatformer/master/resources/images/testBox.png', scene);
+testMaterial.diffuseTexture.hasAlpha = true;
+testMaterial.backFaceCulling = false;
 SPS.addShape(box, cubeCount+1); // 30 cubes
 box.dispose();
 var mesh : BABYLON.Mesh = SPS.buildMesh(); // finally builds and displays the real mesh
@@ -448,7 +455,7 @@ class Player extends PhysBox {
 
     }
     private testNode: BABYLON.TransformNode = new BABYLON.TransformNode('', scene);
-    private static moveSpeed = 0.05;
+    private static moveSpeed = 0.06;
 }
 
 
@@ -464,7 +471,7 @@ for (let i = 0; i < cubeCount; i++) {
     while (true) {
         boxB.setSize(BABYLON.Vector3.One().scale(2 + Math.random() * 1));
         boxB.setVelocity(new BABYLON.Vector3(0, -0.1, 0));
-        boxB.setPos(new BABYLON.Vector3(-5 + Math.random() * 10, 20 + Math.random() * 500, -5 + Math.random() * 10));
+        boxB.setPos(new BABYLON.Vector3(-5 + Math.random() * 10, 20 + Math.random() * 1000, -5 + Math.random() * 10));
         if (!boxB.isObstructed())
             break;
     }
