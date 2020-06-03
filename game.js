@@ -15,13 +15,13 @@ window.addEventListener('DOMContentLoaded', () => {
     // Parameters: alpha, beta, radius, target position, scene
     const camera = new BABYLON.ArcRotateCamera("Camera", 0, 0, 10, new BABYLON.Vector3(0, 0, 0), scene);
     camera.setPosition(new BABYLON.Vector3(0, 0, 20));
-    camera.attachControl(canvas, true);
-    camera.beta = 0.3700715949591232;
+    //camera.attachControl(canvas, true);
+    camera.beta = 0.5700715949591232;
     camera.alpha = 4.71238898039;
-    camera.lowerAlphaLimit = 4.71238898039;
-    camera.upperAlphaLimit = 4.71238898039;
-    camera.lowerBetaLimit = 0.3700715949591232;
-    camera.upperBetaLimit = Math.PI / 2;
+    // camera.lowerAlphaLimit = 4.71238898039;
+    // camera.upperAlphaLimit = 4.71238898039;
+    // camera.lowerBetaLimit = 0.3700715949591232;
+    // camera.upperBetaLimit = Math.PI / 2;
     // create lava
     var sphere = BABYLON.Mesh.CreateGround("ground", 500, 500, 100, scene);
     var lavaMaterial = new BABYLON.LavaMaterial("lava", scene);
@@ -33,11 +33,31 @@ window.addEventListener('DOMContentLoaded', () => {
     sphere.material = lavaMaterial;
     const inputMap = new Map();
     scene.actionManager = new BABYLON.ActionManager(scene);
+    let animPlaying = false;
+    let rotateIndex = 0;
     scene.actionManager.registerAction(new BABYLON.ExecuteCodeAction(BABYLON.ActionManager.OnKeyDownTrigger, function (evt) {
-        inputMap.set(evt.sourceEvent.key.toLowerCase(), true);
+        const key = evt.sourceEvent.key.toLowerCase();
+        inputMap.set(key, true);
+        if (animPlaying)
+            return;
+        if (key == 'arrowright') {
+            var animationBox = new BABYLON.Animation("myAnimation", "alpha", 60, BABYLON.Animation.ANIMATIONTYPE_FLOAT, BABYLON.Animation.ANIMATIONLOOPMODE_CONSTANT);
+            animationBox.setKeys([{ frame: 0, value: camera.alpha }, { frame: 20, value: camera.alpha + (Math.PI / 2) }]);
+            camera.animations = [animationBox];
+            var anim = scene.beginAnimation(camera, 0, 20, false, 1, () => { animPlaying = false; rotateIndex = (rotateIndex == 3 ? 0 : rotateIndex + 1); });
+            animPlaying = true;
+        }
+        else if (key == 'arrowleft') {
+            var animationBox = new BABYLON.Animation("myAnimation2", "alpha", 60, BABYLON.Animation.ANIMATIONTYPE_FLOAT, BABYLON.Animation.ANIMATIONLOOPMODE_CONSTANT);
+            animationBox.setKeys([{ frame: 0, value: camera.alpha }, { frame: 20, value: camera.alpha - (Math.PI / 2) }]);
+            camera.animations = [animationBox];
+            var anim = scene.beginAnimation(camera, 0, 20, false, 1, () => { animPlaying = false; rotateIndex = (rotateIndex == 0 ? 3 : rotateIndex - 1); });
+            animPlaying = true;
+        }
     }));
     scene.actionManager.registerAction(new BABYLON.ExecuteCodeAction(BABYLON.ActionManager.OnKeyUpTrigger, function (evt) {
-        inputMap.set(evt.sourceEvent.key.toLowerCase(), false);
+        const key = evt.sourceEvent.key.toLowerCase();
+        inputMap.set(key, false);
     }));
     const isKeyPressed = (key) => {
         return inputMap.get(key);
@@ -147,7 +167,7 @@ window.addEventListener('DOMContentLoaded', () => {
         }
     }
     const game = new Game();
-    const cubeCount = 200;
+    const cubeCount = 400;
     const SPS = new BABYLON.SolidParticleSystem("SPS", scene);
     let idx = 0;
     var box = BABYLON.MeshBuilder.CreateBox('', { size: 1 }, scene);
@@ -236,7 +256,7 @@ window.addEventListener('DOMContentLoaded', () => {
                     for (let i = 0; i < hits.length; i++) {
                         if (hits[i].getPos().y == hits[0].getPos().y) {
                             this.newCollisions.get(Sides.Bottom).add(hits[i]);
-                            this.setSide(Sides.Bottom, hits[i].getSide(Sides.Top) + 0.01);
+                            this.setSide(Sides.Bottom, hits[i].getSide(Sides.Top) + 0.0001);
                             this.velocity.y = 0;
                         }
                         else
@@ -248,7 +268,7 @@ window.addEventListener('DOMContentLoaded', () => {
                     for (let i = 0; i < hits.length; i++) {
                         if (hits[i].getPos().y == hits[0].getPos().y) {
                             this.newCollisions.get(Sides.Top).add(hits[i]);
-                            this.setSide(Sides.Top, hits[i].getSide(Sides.Bottom) - 0.01);
+                            this.setSide(Sides.Top, hits[i].getSide(Sides.Bottom) - 0.0001);
                             this.velocity.y = 0;
                         }
                         else
@@ -265,7 +285,7 @@ window.addEventListener('DOMContentLoaded', () => {
                     for (let i = 0; i < hits.length; i++) {
                         if (hits[i].getPos().y == hits[0].getPos().y) {
                             this.newCollisions.get(Sides.Left).add(hits[i]);
-                            this.setSide(Sides.Left, hits[i].getSide(Sides.Right) + 0.01);
+                            this.setSide(Sides.Left, hits[i].getSide(Sides.Right) + 0.0001);
                             this.velocity.x = 0;
                         }
                         else
@@ -277,7 +297,7 @@ window.addEventListener('DOMContentLoaded', () => {
                     for (let i = 0; i < hits.length; i++) {
                         if (hits[i].getPos().y == hits[0].getPos().y) {
                             this.newCollisions.get(Sides.Right).add(hits[i]);
-                            this.setSide(Sides.Right, hits[i].getSide(Sides.Left) - 0.01);
+                            this.setSide(Sides.Right, hits[i].getSide(Sides.Left) - 0.0001);
                             this.velocity.x = 0;
                         }
                         else
@@ -294,7 +314,7 @@ window.addEventListener('DOMContentLoaded', () => {
                     for (let i = 0; i < hits.length; i++) {
                         if (hits[i].getPos().y == hits[0].getPos().y) {
                             this.newCollisions.get(Sides.Back).add(hits[i]);
-                            this.setSide(Sides.Back, hits[i].getSide(Sides.Forward) + 0.01);
+                            this.setSide(Sides.Back, hits[i].getSide(Sides.Forward) + 0.0001);
                             this.velocity.z = 0;
                         }
                         else
@@ -306,7 +326,7 @@ window.addEventListener('DOMContentLoaded', () => {
                     for (let i = 0; i < hits.length; i++) {
                         if (hits[i].getPos().y == hits[0].getPos().y) {
                             this.newCollisions.get(Sides.Forward).add(hits[i]);
-                            this.setSide(Sides.Forward, hits[i].getSide(Sides.Back) - 0.01);
+                            this.setSide(Sides.Forward, hits[i].getSide(Sides.Back) - 0.0001);
                             this.velocity.z = 0;
                         }
                         else
@@ -454,7 +474,7 @@ window.addEventListener('DOMContentLoaded', () => {
         let boxB = new FallBox();
         while (true) {
             boxB.setSize(BABYLON.Vector3.One().scale(2 + Math.random() * 1));
-            boxB.setVelocity(new BABYLON.Vector3(0, -0.1, 0));
+            boxB.setVelocity(new BABYLON.Vector3(0, -0.05, 0));
             boxB.setPos(new BABYLON.Vector3(-5 + Math.random() * 10, 20 + Math.random() * 1000, -5 + Math.random() * 10));
             if (!boxB.isObstructed())
                 break;
