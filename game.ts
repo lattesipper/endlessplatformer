@@ -424,11 +424,11 @@ class Player extends PhysBox {
         mesh.scaling = this.getSize();    
     }
     public static LoadResources() {
-        Player.sndJump = new BABYLON.Sound("", "jump.mp3", scene, null, {
+        Player.sndJump = new BABYLON.Sound("", "https://raw.githubusercontent.com/lattesipper/endlessplatformer/master/resources/sounds/jump.mp3", scene, null, {
             loop: false,
             autoplay:  false
         });
-        Player.sndHitHead = new BABYLON.Sound("", "hitHead.mp3", scene, null, {
+        Player.sndHitHead = new BABYLON.Sound("", "https://raw.githubusercontent.com/lattesipper/endlessplatformer/master/resources/sounds/hitHead.mp3", scene, null, {
             loop: false,
             autoplay:  false
         });
