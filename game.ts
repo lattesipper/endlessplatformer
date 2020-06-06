@@ -47,6 +47,13 @@ scene.actionManager = new BABYLON.ActionManager(scene);
 
 let animPlaying = false;
 let rotateIndex = 0;
+
+
+const rotateSound : BABYLON.Sound = new BABYLON.Sound("", "https://raw.githubusercontent.com/lattesipper/endlessplatformer/master/resources/sounds/rotateView.wav", scene, null, {
+    loop: false,
+    autoplay:  false,
+    volume: 0.5
+});
 scene.actionManager.registerAction(new BABYLON.ExecuteCodeAction(BABYLON.ActionManager.OnKeyDownTrigger, function (evt) {
     const key = evt.sourceEvent.key.toLowerCase();
     inputMap.set(key, true);
@@ -59,12 +66,14 @@ scene.actionManager.registerAction(new BABYLON.ExecuteCodeAction(BABYLON.ActionM
         camera.animations = [animationBox];
         var anim = scene.beginAnimation(camera, 0, 20, false, 1, () => { animPlaying = false; rotateIndex = (rotateIndex == 3 ? 0 : rotateIndex + 1); });
         animPlaying = true;
+        rotateSound.play();
     } else if (key == 'arrowleft') {
         var animationBox = new BABYLON.Animation("myAnimation2", "alpha", 60, BABYLON.Animation.ANIMATIONTYPE_FLOAT, BABYLON.Animation.ANIMATIONLOOPMODE_CONSTANT);
         animationBox.setKeys( [ { frame: 0, value: camera.alpha },  { frame: 20, value: camera.alpha - (Math.PI / 2) }]);
         camera.animations = [animationBox];
         var anim = scene.beginAnimation(camera, 0, 20, false, 1, () => { animPlaying = false; rotateIndex = (rotateIndex == 0 ? 3 : rotateIndex - 1); });
         animPlaying = true;
+        rotateSound.play();
     }
 }));
 scene.actionManager.registerAction(new BABYLON.ExecuteCodeAction(BABYLON.ActionManager.OnKeyUpTrigger, function (evt) {
@@ -424,17 +433,19 @@ class Player extends PhysBox {
         mesh.scaling = this.getSize();    
     }
     public static LoadResources() {
-        Player.sndJump = new BABYLON.Sound("", "https://raw.githubusercontent.com/lattesipper/endlessplatformer/master/resources/sounds/jump.mp3", scene, null, {
+        Player.sndJump = new BABYLON.Sound("", "https://raw.githubusercontent.com/lattesipper/endlessplatformer/master/resources/sounds/jump.wav", scene, null, {
             loop: false,
-            autoplay:  false
+            autoplay:  false,
+            volume: 0.5
         });
-        Player.sndHitHead = new BABYLON.Sound("", "https://raw.githubusercontent.com/lattesipper/endlessplatformer/master/resources/sounds/hitHead.mp3", scene, null, {
+        Player.sndHitHead = new BABYLON.Sound("", "https://raw.githubusercontent.com/lattesipper/endlessplatformer/master/resources/sounds/hitHead.wav", scene, null, {
             loop: false,
-            autoplay:  false
+            autoplay:  false,
+            volume: 0.5
         });
     }
     public onCollisionStart(side: Sides, physBox: PhysBox) { 
-        if (side == Sides.Top && physBox instanceof FallBox)
+        if (!Player.sndHitHead.isPlaying && side == Sides.Top && physBox instanceof FallBox)
             Player.sndHitHead.play();
     }
     public update(t: number) {
@@ -462,7 +473,7 @@ class Player extends PhysBox {
                 this.getCollisions(Sides.Left).forEach((physBox) => avgYSpeed += physBox.getVelocity().y);
                 if (isKeyPressed(' ')) {
                     this.getVelocity().x = 0.2; this.getVelocity().y = 0.4;
-                    Player.sndJump.play();
+                    if (!Player.sndHitHead.isPlaying) Player.sndJump.play();
                 }
             }
             if (this.getCollisions(Sides.Right).size) {
@@ -470,7 +481,7 @@ class Player extends PhysBox {
                 this.getCollisions(Sides.Right).forEach((physBox) => avgYSpeed += physBox.getVelocity().y);
                 if (isKeyPressed(' ')) {
                     this.getVelocity().x = -0.2; this.getVelocity().y = 0.4;
-                    Player.sndJump.play();
+                    if (!Player.sndHitHead.isPlaying) Player.sndJump.play();
                 }
             }
             if (this.getCollisions(Sides.Forward).size) {
@@ -478,7 +489,7 @@ class Player extends PhysBox {
                 this.getCollisions(Sides.Forward).forEach((physBox) => avgYSpeed += physBox.getVelocity().y);
                 if (isKeyPressed(' ')) {
                     this.getVelocity().z = -0.2; this.getVelocity().y = 0.4;
-                    Player.sndJump.play();
+                    if (!Player.sndHitHead.isPlaying) Player.sndJump.play();
                 }
             }
             if (this.getCollisions(Sides.Back).size) {
@@ -486,7 +497,7 @@ class Player extends PhysBox {
                 this.getCollisions(Sides.Back).forEach((physBox) => avgYSpeed += physBox.getVelocity().y);
                 if (isKeyPressed(' ')) {
                     this.getVelocity().z = 0.2; this.getVelocity().y = 0.4;
-                    Player.sndJump.play();
+                    if (!Player.sndHitHead.isPlaying) Player.sndJump.play();
                 }
             }
         }
@@ -514,7 +525,7 @@ class Player extends PhysBox {
                 this.getVelocity().x = 0;
             }
             if (isKeyPressed(' ')) {
-                Player.sndJump.play();
+                if (!Player.sndHitHead.isPlaying) Player.sndJump.play();
                 this.getVelocity().y = 0.3;
             }    
         } else {

@@ -37,6 +37,11 @@ window.addEventListener('DOMContentLoaded', () => {
     scene.actionManager = new BABYLON.ActionManager(scene);
     let animPlaying = false;
     let rotateIndex = 0;
+    const rotateSound = new BABYLON.Sound("", "https://raw.githubusercontent.com/lattesipper/endlessplatformer/master/resources/sounds/rotateView.wav", scene, null, {
+        loop: false,
+        autoplay: false,
+        volume: 0.5
+    });
     scene.actionManager.registerAction(new BABYLON.ExecuteCodeAction(BABYLON.ActionManager.OnKeyDownTrigger, function (evt) {
         const key = evt.sourceEvent.key.toLowerCase();
         inputMap.set(key, true);
@@ -48,6 +53,7 @@ window.addEventListener('DOMContentLoaded', () => {
             camera.animations = [animationBox];
             var anim = scene.beginAnimation(camera, 0, 20, false, 1, () => { animPlaying = false; rotateIndex = (rotateIndex == 3 ? 0 : rotateIndex + 1); });
             animPlaying = true;
+            rotateSound.play();
         }
         else if (key == 'arrowleft') {
             var animationBox = new BABYLON.Animation("myAnimation2", "alpha", 60, BABYLON.Animation.ANIMATIONTYPE_FLOAT, BABYLON.Animation.ANIMATIONLOOPMODE_CONSTANT);
@@ -55,6 +61,7 @@ window.addEventListener('DOMContentLoaded', () => {
             camera.animations = [animationBox];
             var anim = scene.beginAnimation(camera, 0, 20, false, 1, () => { animPlaying = false; rotateIndex = (rotateIndex == 0 ? 3 : rotateIndex - 1); });
             animPlaying = true;
+            rotateSound.play();
         }
     }));
     scene.actionManager.registerAction(new BABYLON.ExecuteCodeAction(BABYLON.ActionManager.OnKeyUpTrigger, function (evt) {
@@ -397,17 +404,19 @@ window.addEventListener('DOMContentLoaded', () => {
             mesh.scaling = this.getSize();
         }
         static LoadResources() {
-            Player.sndJump = new BABYLON.Sound("", "https://raw.githubusercontent.com/lattesipper/endlessplatformer/master/resources/sounds/jump.mp3", scene, null, {
+            Player.sndJump = new BABYLON.Sound("", "https://raw.githubusercontent.com/lattesipper/endlessplatformer/master/resources/sounds/jump.wav", scene, null, {
                 loop: false,
-                autoplay: false
+                autoplay: false,
+                volume: 0.5
             });
-            Player.sndHitHead = new BABYLON.Sound("", "https://raw.githubusercontent.com/lattesipper/endlessplatformer/master/resources/sounds/hitHead.mp3", scene, null, {
+            Player.sndHitHead = new BABYLON.Sound("", "https://raw.githubusercontent.com/lattesipper/endlessplatformer/master/resources/sounds/hitHead.wav", scene, null, {
                 loop: false,
-                autoplay: false
+                autoplay: false,
+                volume: 0.5
             });
         }
         onCollisionStart(side, physBox) {
-            if (side == Sides.Top && physBox instanceof FallBox)
+            if (!Player.sndHitHead.isPlaying && side == Sides.Top && physBox instanceof FallBox)
                 Player.sndHitHead.play();
         }
         update(t) {
@@ -454,7 +463,8 @@ window.addEventListener('DOMContentLoaded', () => {
                     if (isKeyPressed(' ')) {
                         this.getVelocity().x = 0.2;
                         this.getVelocity().y = 0.4;
-                        Player.sndJump.play();
+                        if (!Player.sndHitHead.isPlaying)
+                            Player.sndJump.play();
                     }
                 }
                 if (this.getCollisions(Sides.Right).size) {
@@ -463,7 +473,8 @@ window.addEventListener('DOMContentLoaded', () => {
                     if (isKeyPressed(' ')) {
                         this.getVelocity().x = -0.2;
                         this.getVelocity().y = 0.4;
-                        Player.sndJump.play();
+                        if (!Player.sndHitHead.isPlaying)
+                            Player.sndJump.play();
                     }
                 }
                 if (this.getCollisions(Sides.Forward).size) {
@@ -472,7 +483,8 @@ window.addEventListener('DOMContentLoaded', () => {
                     if (isKeyPressed(' ')) {
                         this.getVelocity().z = -0.2;
                         this.getVelocity().y = 0.4;
-                        Player.sndJump.play();
+                        if (!Player.sndHitHead.isPlaying)
+                            Player.sndJump.play();
                     }
                 }
                 if (this.getCollisions(Sides.Back).size) {
@@ -481,7 +493,8 @@ window.addEventListener('DOMContentLoaded', () => {
                     if (isKeyPressed(' ')) {
                         this.getVelocity().z = 0.2;
                         this.getVelocity().y = 0.4;
-                        Player.sndJump.play();
+                        if (!Player.sndHitHead.isPlaying)
+                            Player.sndJump.play();
                     }
                 }
             }
@@ -513,7 +526,8 @@ window.addEventListener('DOMContentLoaded', () => {
                     this.getVelocity().x = 0;
                 }
                 if (isKeyPressed(' ')) {
-                    Player.sndJump.play();
+                    if (!Player.sndHitHead.isPlaying)
+                        Player.sndJump.play();
                     this.getVelocity().y = 0.3;
                 }
             }
