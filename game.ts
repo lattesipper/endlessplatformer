@@ -15,28 +15,29 @@ scene.fogMode = BABYLON.Scene.FOGMODE_EXP;
 scene.fogDensity = 0.01;
 scene.fogStart = 20.0;
 scene.fogEnd = 60.0;
-scene.fogColor = new BABYLON.Color3(0.2, 1.0, 1.0);
-scene.clearColor = new BABYLON.Color4(0.2, 1.0, 1.0, 1.0);
-scene.ambientColor = new BABYLON.Color3(0.2, 0.2, 0.2);
-
+scene.fogColor = new BABYLON.Color3(1, 0, 0);
+scene.clearColor = new BABYLON.Color4(1, 0, 0, 1.0);
+scene.ambientColor = new BABYLON.Color3(0.3, 0.3, 0.3);
 // Parameters: alpha, beta, radius, target position, scene
-const camera = new BABYLON.ArcRotateCamera("Camera", 0, 0, 10, new BABYLON.Vector3(0, 0, 0), scene);
-camera.setPosition(new BABYLON.Vector3(0, 0, 20));
+const camera = new BABYLON.ArcRotateCamera("Camera", 0, 0, 20, new BABYLON.Vector3(0, 0, 0), scene);
+camera.setPosition(new BABYLON.Vector3(0, 0, 0));
 //camera.attachControl(canvas, true);
-camera.beta = 0.3700715949591232;
+camera.beta = 0.5;
 camera.alpha = 4.71238898039;
+camera.radius = 20;
 // camera.lowerAlphaLimit = 4.71238898039;
 // camera.upperAlphaLimit = 4.71238898039;
-camera.lowerBetaLimit = 0.3700715949591232;
+camera.lowerBetaLimit = 0.5;
 camera.upperBetaLimit = Math.PI / 2;
 
 
 // create lava
 var sphere = BABYLON.Mesh.CreateGround("ground", 500, 500, 100, scene);
+sphere.visibility = 0.5;
 var lavaMaterial = new BABYLON.LavaMaterial("lava", scene);	
 lavaMaterial.noiseTexture = new BABYLON.Texture("https://www.babylonjs-playground.com/textures/lava/cloud.png", scene); // Set the bump texture
 lavaMaterial.diffuseTexture = new BABYLON.Texture("https://www.babylonjs-playground.com/textures/lava/lavatile.jpg", scene); // Set the diffuse texture
-lavaMaterial.speed = 0.1;
+lavaMaterial.speed = 0.5;
 lavaMaterial.fogColor = new BABYLON.Color3(1, 0, 0);
 lavaMaterial.unlit = true;
 sphere.material = lavaMaterial;
@@ -120,6 +121,7 @@ class Game {
     public constructor() {  
         scene.onBeforeRenderObservable.add(() => {
             //this.physBoxes.forEach((pbox) => pbox.unmark());
+            sphere.position.y += 0.01;
             this.insertionSort();
             this.physBoxes.forEach((pbox) => pbox.update(0));
         });
@@ -149,16 +151,11 @@ class Game {
         if (dim != 'y' || physBox.getVelocity().y < 0) {
             for (let i = yIndex; i >= 0; i--) {
                 let candiate = this.physBoxesY[i];
-                // if (physBox instanceof Player) {
-                //     candiate.mark();
-                // }
                 tests++;
                 if (physBox.intersects(candiate)) {
                     collisions.push(candiate);
                 }
-                if ((candiate.getSide(Sides.Top) + 3) < physBox.getPos().y) {
-                    // if (Math.random() > 0.99)
-                    //     console.log(yIndex - i);
+                if (physBox.getSide(Sides.Bottom) > (candiate.getPos().y + 2.5)) {
                     break;
                 }
             }
@@ -167,22 +164,14 @@ class Game {
             for (let i = yIndex; i < this.physBoxes.length; i++) {
                 tests++;
                 let candiate = this.physBoxesY[i];
-                // if (physBox instanceof Player) {
-                //     candiate.mark();
-                // }
                 if (physBox.intersects(candiate)) {
                     collisions.push(candiate);
                 }
-                if ((candiate.getSide(Sides.Bottom) - 3) > physBox.getPos().y) {
-                    // if (Math.random() > 0.99)
-                    //     console.log(yIndex - i);
+                if (physBox.getSide(Sides.Top) < (candiate.getPos().y - 2.5)) {
                     break;
                 }
             }
         }
-        // if (Math.random() > 0.999) {
-        //     console.log(tests);
-        // }
         return collisions;
     }
     private yIndexes = new Map<PhysBox, number>();
@@ -211,11 +200,6 @@ SPS.updateParticle = (particle) => {
     const physBoxes = game.getPhysObjects();
     particle.position.copyFrom(physBoxes[idx].getPos());
     particle.scaling.copyFrom(physBoxes[idx].getSize());
-    // if (physBoxes[idx].isMarked()) {
-    //     particle.color.set(0, 1, 0, 1);
-    // } else {
-    //     particle.color.set(1, 1, 1, 1);
-    // }
     idx++;
     return particle;
 };
@@ -259,21 +243,32 @@ class BoundBox {
 
 class PhysBox extends BoundBox implements Update {
     public setVelocity(velocity: BABYLON.Vector3) : PhysBox { this.velocity = velocity.clone(); return this; }
-    public getVelocity() { return this.velocity; }
+    public getVelocity() { return this.frozen ? PhysBox.frozenVelocity : this.velocity; }
 
     public freeze() : PhysBox { this.frozen = true; return this; }
     public unfreeze() : PhysBox { this.frozen = false; return this; }
     public isFrozen() : boolean { return this.frozen; }
-
-    // public mark() { this.marked = true; }
-    // public unmark() { this.marked = false; }
-    // public isMarked() { return this.marked; }
+    public getMoverLevel() : number { return 1; }
 
     public isObstructed() : boolean { return (game.getPhysObjects().filter(y => y.intersects(this)).length != 0); }
 
-    public onCollisionStart(side: Sides, physBox: PhysBox) { }
-    public onCollisionStop(side: Sides, physBox: PhysBox) { }
+    public onCollisionStart(side: Sides, physBox: PhysBox) { 
 
+    }
+    public onCollisionHold(side: Sides, physBox: PhysBox) {
+        if (this.getMoverLevel() < physBox.getMoverLevel()) {
+            if (side == Sides.Top || side == Sides.Bottom)
+                this.getVelocity().y = physBox.getVelocity().y;
+            else if (side == Sides.Left || side == Sides.Right)
+                this.getVelocity().x = physBox.getVelocity().x;
+            else if (side == Sides.Forward || side == Sides.Back)
+                this.getVelocity().z = physBox.getVelocity().z;
+        }
+    }
+    public onCollisionStop(side: Sides, physBox: PhysBox) { 
+
+    }
+    
     public update(t : number) {
         if (this.frozen)
             return;
@@ -286,8 +281,7 @@ class PhysBox extends BoundBox implements Update {
                 for (let i = 0; i < hits.length; i++) {
                     if (hits[i].getPos().y == hits[0].getPos().y) {
                         this.newCollisions.get(Sides.Bottom).add(hits[i]);
-                        this.setSide(Sides.Bottom, hits[i].getSide(Sides.Top) + 0.0001);
-                        this.velocity.y = 0;
+                        this.setSide(Sides.Bottom, hits[i].getSide(Sides.Top) + 0.001);
                     } else break;
                 }
             } else if (yVelocity > 0) {
@@ -295,8 +289,7 @@ class PhysBox extends BoundBox implements Update {
                 for (let i = 0; i < hits.length; i++) {
                     if (hits[i].getPos().y == hits[0].getPos().y) {
                         this.newCollisions.get(Sides.Top).add(hits[i]);
-                        this.setSide(Sides.Top, hits[i].getSide(Sides.Bottom) - 0.0001);
-                        this.velocity.y = 0;
+                        this.setSide(Sides.Top, hits[i].getSide(Sides.Bottom) - 0.001);
                     } else break;
                 }
             }
@@ -310,8 +303,7 @@ class PhysBox extends BoundBox implements Update {
                 for (let i = 0; i < hits.length; i++) {
                     if (hits[i].getPos().y == hits[0].getPos().y) {
                         this.newCollisions.get(Sides.Left).add(hits[i]);
-                        this.setSide(Sides.Left, hits[i].getSide(Sides.Right) + 0.0001);
-                        this.velocity.x = 0;
+                        this.setSide(Sides.Left, hits[i].getSide(Sides.Right) + 0.001);
                     } else break;
                 }
             } else if (xVelocity > 0) {
@@ -319,8 +311,7 @@ class PhysBox extends BoundBox implements Update {
                 for (let i = 0; i < hits.length; i++) {
                     if (hits[i].getPos().y == hits[0].getPos().y) {
                         this.newCollisions.get(Sides.Right).add(hits[i]);
-                        this.setSide(Sides.Right, hits[i].getSide(Sides.Left) - 0.0001);
-                        this.velocity.x = 0;
+                        this.setSide(Sides.Right, hits[i].getSide(Sides.Left) - 0.001);
                     } else break;
                 }
             }
@@ -335,7 +326,6 @@ class PhysBox extends BoundBox implements Update {
                     if (hits[i].getPos().y == hits[0].getPos().y) {
                         this.newCollisions.get(Sides.Back).add(hits[i]);
                         this.setSide(Sides.Back, hits[i].getSide(Sides.Forward) + 0.0001);
-                        this.velocity.z = 0;
                     } else break;
                 }
             } else if (zVelocity > 0) {
@@ -344,7 +334,6 @@ class PhysBox extends BoundBox implements Update {
                     if (hits[i].getPos().y == hits[0].getPos().y) {
                         this.newCollisions.get(Sides.Forward).add(hits[i]);
                         this.setSide(Sides.Forward, hits[i].getSide(Sides.Back) - 0.0001);
-                        this.velocity.z = 0;
                     } else break;
                 }
             }
@@ -354,6 +343,9 @@ class PhysBox extends BoundBox implements Update {
                 if (!this.lastCollisions.get(side).has(collision)) {
                     this.onCollisionStart(side, collision);
                     collision.onCollisionStart(side.flip(), this);
+                } else {
+                    this.onCollisionHold(side, collision);
+                    collision.onCollisionHold(side.flip(), this);
                 }
             });
         });
@@ -372,7 +364,7 @@ class PhysBox extends BoundBox implements Update {
     }
     private frozen: boolean = false;
     private velocity: BABYLON.Vector3 = BABYLON.Vector3.Zero();
-    private marked: boolean = false;
+    private static frozenVelocity: BABYLON.Vector3 = BABYLON.Vector3.Zero();
 
     protected getCollisions(side) : Set<PhysBox> { return this.lastCollisions.get(side); }
 
@@ -414,23 +406,44 @@ class FallBoxCluster {
 
 class FallBox extends PhysBox {
     public onCollisionStart(side: Sides, physBox : PhysBox) {
+        super.onCollisionStart(side, physBox);
         if (side == Sides.Bottom && (physBox instanceof FallBox) && physBox.isFrozen()) {
             this.freeze();
         }
     }
+    public getMoverLevel() : number { return 2; }
 }
 
 class Player extends PhysBox {
     public constructor() {
         super();
-        this.setSize(new BABYLON.Vector3(0.5, 0.75, 0.5));
+        this.setSize(new BABYLON.Vector3(0.5, 0.65, 0.5));
         this.setPos(new BABYLON.Vector3(0, 3, 0));
-        const mesh = BABYLON.MeshBuilder.CreateBox('', {size: 1}, scene);
+        const mesh =  BABYLON.MeshBuilder.CreateCylinder("cone", {diameterTop: 1, height: 1, tessellation: 16}, scene);
         mesh.position = this.getPos();
         mesh.scaling = this.getSize();    
     }
+    public static LoadResources() {
+        Player.sndJump = new BABYLON.Sound("", "jump.mp3", scene, null, {
+            loop: false,
+            autoplay:  false
+        });
+        Player.sndHitHead = new BABYLON.Sound("", "hitHead.mp3", scene, null, {
+            loop: false,
+            autoplay:  false
+        });
+    }
+    public onCollisionStart(side: Sides, physBox: PhysBox) { 
+        if (side == Sides.Top && physBox instanceof FallBox)
+            Player.sndHitHead.play();
+    }
     public update(t: number) {
         let wKey; let aKey; let sKey; let dKey;
+        if (camera.alpha < 0) {
+            camera.alpha = (Math.PI * 2) + camera.alpha;
+        } else if (camera.alpha > (Math.PI * 2))  {
+            camera.alpha = camera.alpha - (Math.PI * 2);
+        }
         if (camera.alpha >= 5.49778714378 || camera.alpha <= 0.78539816339) {
             wKey = 'd'; aKey = 'w'; sKey = 'a';  dKey = 's';
         } else if (camera.alpha >= 0.78539816339 && camera.alpha <= 2.35619449019) {
@@ -441,30 +454,91 @@ class Player extends PhysBox {
             wKey = 'w'; aKey = 'a'; sKey = 's';  dKey = 'd';
         }
 
-        this.getVelocity().y -= 0.005;
-
-        if (isKeyPressed(wKey)) {
-            this.getVelocity().z = Player.moveSpeed;
-        } else if (isKeyPressed(sKey)) {
-            this.getVelocity().z = -Player.moveSpeed;
+        let avgYSpeed = 0;
+        let count = 0;
+        if (!this.getCollisions(Sides.Top).size && this.getVelocity().y < 0) {
+            if (this.getCollisions(Sides.Left).size) {
+                count += this.getCollisions(Sides.Left).size;
+                this.getCollisions(Sides.Left).forEach((physBox) => avgYSpeed += physBox.getVelocity().y);
+                if (isKeyPressed(' ')) {
+                    this.getVelocity().x = 0.2; this.getVelocity().y = 0.4;
+                    Player.sndJump.play();
+                }
+            }
+            if (this.getCollisions(Sides.Right).size) {
+                count += this.getCollisions(Sides.Right).size;
+                this.getCollisions(Sides.Right).forEach((physBox) => avgYSpeed += physBox.getVelocity().y);
+                if (isKeyPressed(' ')) {
+                    this.getVelocity().x = -0.2; this.getVelocity().y = 0.4;
+                    Player.sndJump.play();
+                }
+            }
+            if (this.getCollisions(Sides.Forward).size) {
+                count += this.getCollisions(Sides.Forward).size;
+                this.getCollisions(Sides.Forward).forEach((physBox) => avgYSpeed += physBox.getVelocity().y);
+                if (isKeyPressed(' ')) {
+                    this.getVelocity().z = -0.2; this.getVelocity().y = 0.4;
+                    Player.sndJump.play();
+                }
+            }
+            if (this.getCollisions(Sides.Back).size) {
+                count += this.getCollisions(Sides.Back).size;
+                this.getCollisions(Sides.Back).forEach((physBox) => avgYSpeed += physBox.getVelocity().y);
+                if (isKeyPressed(' ')) {
+                    this.getVelocity().z = 0.2; this.getVelocity().y = 0.4;
+                    Player.sndJump.play();
+                }
+            }
+        }
+        if (count && !isKeyPressed(' ')) {
+            avgYSpeed /= count;
+            avgYSpeed -= 0.01;
+            this.getVelocity().y = avgYSpeed;
         } else {
-            this.getVelocity().z = 0;
-        }
-        if (isKeyPressed(aKey)) {
-            this.getVelocity().x = -Player.moveSpeed;
-        } else if (isKeyPressed(dKey)) {
-            this.getVelocity().x = Player.moveSpeed;
-        } else {
-            this.getVelocity().x = 0;
-        }
-        if (isKeyPressed(' ') && this.getCollisions(Sides.Bottom).size > 0) {
-            this.getVelocity().y = 0.2;
+            this.getVelocity().y = Math.max(this.getVelocity().y - 0.008, -0.5);
         }
 
-        if (camera.alpha < 0) {
-            camera.alpha = (Math.PI * 2) + camera.alpha;
-        } else if (camera.alpha > (Math.PI * 2))  {
-            camera.alpha = camera.alpha - (Math.PI * 2);
+        if (this.getCollisions(Sides.Bottom).size) {
+            if (isKeyPressed(wKey)) {
+                this.getVelocity().z = Player.moveSpeed;
+            } else if (isKeyPressed(sKey)) {
+                this.getVelocity().z = -Player.moveSpeed;
+            } else {
+                this.getVelocity().z = 0;
+            }
+            if (isKeyPressed(aKey)) {
+                this.getVelocity().x = -Player.moveSpeed;
+            } else if (isKeyPressed(dKey)) {
+                this.getVelocity().x = Player.moveSpeed;
+            } else {
+                this.getVelocity().x = 0;
+            }
+            if (isKeyPressed(' ')) {
+                Player.sndJump.play();
+                this.getVelocity().y = 0.3;
+            }    
+        } else {
+            if (isKeyPressed(wKey)) {
+                this.getVelocity().z = Math.min(this.getVelocity().z + 0.01, Player.moveSpeed);
+            } else if (isKeyPressed(sKey)) {
+                this.getVelocity().z = Math.max(this.getVelocity().z - 0.01, -Player.moveSpeed);
+            } else if (Math.abs(this.getVelocity().z) > 0.01) {
+                this.getVelocity().z += this.getVelocity().z > 0 ? -0.01 : 0.01;
+            } else {
+                this.getVelocity().z = 0;
+            }
+            if (isKeyPressed(aKey)) {
+                this.getVelocity().x = Math.max(this.getVelocity().x - 0.01, -Player.moveSpeed);
+            } else if (isKeyPressed(dKey)) {
+                this.getVelocity().x = Math.min(this.getVelocity().x + 0.01, Player.moveSpeed);
+            } else if (Math.abs(this.getVelocity().x) > 0.01) {
+                this.getVelocity().x += this.getVelocity().x > 0 ? -0.01 : 0.01;
+            } else {
+                this.getVelocity().x = 0;
+            }
+            if (isKeyPressed('control')) {
+                this.getVelocity().y = -0.5;
+            }
         }
 
         super.update(t);
@@ -474,8 +548,11 @@ class Player extends PhysBox {
 
     }
     private testNode: BABYLON.TransformNode = new BABYLON.TransformNode('', scene);
-    private static moveSpeed = 0.06;
+    private static moveSpeed = 0.1;
+    private static sndJump: BABYLON.Sound;
+    private static sndHitHead: BABYLON.Sound;
 }
+Player.LoadResources();
 
 
 let bottomBox = new FallBox();
@@ -488,9 +565,9 @@ game.addPhysBox(bottomBox);
 for (let i = 0; i < cubeCount; i++) {
     let boxB = new FallBox();
     while (true) {
-        boxB.setSize(BABYLON.Vector3.One().scale(2 + Math.random() * 1));
-        boxB.setVelocity(new BABYLON.Vector3(0, -0.1, 0));
-        boxB.setPos(new BABYLON.Vector3(-5 + Math.random() * 10, 20 + Math.random() * 1000, -5 + Math.random() * 10));
+        boxB.setSize(BABYLON.Vector3.One().scale(2 + Math.random() * 3));
+        boxB.setVelocity(new BABYLON.Vector3(0, -0.075, 0));
+        boxB.setPos(new BABYLON.Vector3(-5 + Math.random() * 10, 20 + Math.random() * 1200, -5 + Math.random() * 10));
         if (!boxB.isObstructed())
             break;
     }
