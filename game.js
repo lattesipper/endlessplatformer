@@ -134,7 +134,9 @@ window.addEventListener('DOMContentLoaded', () => {
             scene.onBeforeRenderObservable.add(() => {
                 this.lavaGround.position.y += 0.015;
                 this.insertionSort();
-                this.physBoxes.forEach(pbox => pbox.update(0));
+                this.physBoxes.forEach(pbox => pbox.beforeCollisions());
+                this.physBoxes.forEach(pbox => pbox.resolveCollisions(0));
+                this.physBoxes.forEach(pbox => pbox.afterCollisions());
                 this.fallboxClusters.forEach(cluster => cluster.update());
             });
             const lavaGround = BABYLON.Mesh.CreateGround("ground", 500, 500, 100, scene);
@@ -191,7 +193,7 @@ window.addEventListener('DOMContentLoaded', () => {
                 for (let i = yIndex; i >= 0; i--) {
                     let candiate = this.physBoxesY[i];
                     tests++;
-                    if (physBox.intersects(candiate)) {
+                    if (candiate.isActive() && physBox.intersects(candiate)) {
                         collisions.push(candiate);
                     }
                     if (physBox.getSide(Sides.Bottom) > (candiate.getPos().y + 2.5)) {
@@ -203,7 +205,7 @@ window.addEventListener('DOMContentLoaded', () => {
                 for (let i = yIndex; i < this.physBoxes.length; i++) {
                     tests++;
                     let candiate = this.physBoxesY[i];
-                    if (physBox.intersects(candiate)) {
+                    if (candiate.isActive() && physBox.intersects(candiate)) {
                         collisions.push(candiate);
                     }
                     if (physBox.getSide(Sides.Top) < (candiate.getPos().y - 2.5)) {
@@ -248,6 +250,7 @@ window.addEventListener('DOMContentLoaded', () => {
         constructor(...args) {
             super(...args);
             this.frozen = false;
+            this.active = true;
             this.velocity = BABYLON.Vector3.Zero();
             this.lastCollisions = new Map([
                 [Sides.Left, new Set()], [Sides.Right, new Set()], [Sides.Top, new Set()], [Sides.Bottom, new Set()], [Sides.Forward, new Set()], [Sides.Back, new Set()]
@@ -258,20 +261,15 @@ window.addEventListener('DOMContentLoaded', () => {
         }
         setVelocity(velocity) { this.velocity = velocity.clone(); return this; }
         getVelocity() { return this.frozen ? PhysBox.frozenVelocity : this.velocity; }
-        freeze() {
-            this.frozen = true;
-            this.fire('freeze', true);
-            return this;
-            ;
-        }
-        unfreeze() {
-            this.frozen = false;
-            this.fire('freeze', false);
-            return this;
-        }
+        isActive() { return this.active; }
+        disable() { this.active = false; }
+        enable() { this.active = true; }
+        freeze() { this.frozen = true; this.fire('freeze', true); return this; }
+        unfreeze() { this.frozen = false; this.fire('freeze', false); return this; }
         isFrozen() { return this.frozen; }
         getMoverLevel() { return 1; }
         onCollisionStart(side, physBox) {
+            this.newCollisions.get(side).add(physBox);
         }
         onCollisionHold(side, physBox) {
             if (this.getMoverLevel() < physBox.getMoverLevel()) {
@@ -285,90 +283,13 @@ window.addEventListener('DOMContentLoaded', () => {
         }
         onCollisionStop(side, physBox) {
         }
-        update(t) {
-            if (this.frozen)
-                return;
-            const yVelocity = this.getVelocity().y;
-            if (yVelocity != 0) {
-                this.getPos().y += yVelocity;
-                let collisions = game.getCollisions(this, 'y');
-                if (yVelocity < 0) {
-                    let hits = collisions.sort((b, a) => a.getSide(Sides.Top) - b.getSide(Sides.Top));
-                    for (let i = 0; i < hits.length; i++) {
-                        if (hits[i].getPos().y == hits[0].getPos().y) {
-                            this.newCollisions.get(Sides.Bottom).add(hits[i]);
-                            this.setSide(Sides.Bottom, hits[i].getSide(Sides.Top) + 0.001);
-                        }
-                        else
-                            break;
-                    }
-                }
-                else if (yVelocity > 0) {
-                    let hits = collisions.sort((a, b) => a.getSide(Sides.Bottom) - b.getSide(Sides.Bottom));
-                    for (let i = 0; i < hits.length; i++) {
-                        if (hits[i].getPos().y == hits[0].getPos().y) {
-                            this.newCollisions.get(Sides.Top).add(hits[i]);
-                            this.setSide(Sides.Top, hits[i].getSide(Sides.Bottom) - 0.001);
-                        }
-                        else
-                            break;
-                    }
-                }
-            }
-            const xVelocity = this.getVelocity().x;
-            if (xVelocity != 0) {
-                this.getPos().x += xVelocity;
-                let collisions = game.getCollisions(this, 'x');
-                if (xVelocity < 0) {
-                    let hits = collisions.sort((b, a) => a.getSide(Sides.Right) - b.getSide(Sides.Right));
-                    for (let i = 0; i < hits.length; i++) {
-                        if (hits[i].getPos().y == hits[0].getPos().y) {
-                            this.newCollisions.get(Sides.Left).add(hits[i]);
-                            this.setSide(Sides.Left, hits[i].getSide(Sides.Right) + 0.001);
-                        }
-                        else
-                            break;
-                    }
-                }
-                else if (xVelocity > 0) {
-                    let hits = collisions.sort((a, b) => a.getSide(Sides.Left) - b.getSide(Sides.Left));
-                    for (let i = 0; i < hits.length; i++) {
-                        if (hits[i].getPos().y == hits[0].getPos().y) {
-                            this.newCollisions.get(Sides.Right).add(hits[i]);
-                            this.setSide(Sides.Right, hits[i].getSide(Sides.Left) - 0.001);
-                        }
-                        else
-                            break;
-                    }
-                }
-            }
-            const zVelocity = this.getVelocity().z;
-            if (zVelocity != 0) {
-                this.getPos().z += zVelocity;
-                let collisions = game.getCollisions(this, 'z');
-                if (zVelocity < 0) {
-                    let hits = collisions.sort((b, a) => a.getSide(Sides.Forward) - b.getSide(Sides.Forward));
-                    for (let i = 0; i < hits.length; i++) {
-                        if (hits[i].getPos().y == hits[0].getPos().y) {
-                            this.newCollisions.get(Sides.Back).add(hits[i]);
-                            this.setSide(Sides.Back, hits[i].getSide(Sides.Forward) + 0.0001);
-                        }
-                        else
-                            break;
-                    }
-                }
-                else if (zVelocity > 0) {
-                    let hits = collisions.sort((a, b) => a.getSide(Sides.Back) - b.getSide(Sides.Back));
-                    for (let i = 0; i < hits.length; i++) {
-                        if (hits[i].getPos().y == hits[0].getPos().y) {
-                            this.newCollisions.get(Sides.Forward).add(hits[i]);
-                            this.setSide(Sides.Forward, hits[i].getSide(Sides.Back) - 0.0001);
-                        }
-                        else
-                            break;
-                    }
-                }
-            }
+        beforeCollisions() {
+            let tmp = this.newCollisions;
+            this.newCollisions = this.lastCollisions;
+            this.newCollisions.forEach((collisions, side) => collisions.clear());
+            this.lastCollisions = tmp;
+        }
+        afterCollisions() {
             this.newCollisions.forEach((collisions, side) => {
                 collisions.forEach((collision) => {
                     if (!this.lastCollisions.get(side).has(collision)) {
@@ -389,10 +310,100 @@ window.addEventListener('DOMContentLoaded', () => {
                     }
                 });
             });
-            let tmp = this.newCollisions;
-            this.newCollisions = this.lastCollisions;
-            this.newCollisions.forEach((collisions, side) => collisions.clear());
-            this.lastCollisions = tmp;
+        }
+        notifyOfCollision(side, physBox) {
+            this.newCollisions.get(side).add(physBox);
+        }
+        resolveCollisions(t) {
+            if (this.frozen || !this.active)
+                return;
+            const yVelocity = this.getVelocity().y;
+            if (yVelocity != 0) {
+                this.getPos().y += yVelocity;
+                let collisions = game.getCollisions(this, 'y');
+                if (yVelocity < 0) {
+                    let hits = collisions.sort((b, a) => a.getSide(Sides.Top) - b.getSide(Sides.Top));
+                    for (let i = 0; i < hits.length; i++) {
+                        if (hits[i].getPos().y == hits[0].getPos().y) {
+                            this.newCollisions.get(Sides.Bottom).add(hits[i]);
+                            hits[i].notifyOfCollision(Sides.Top, this);
+                            this.setSide(Sides.Bottom, hits[i].getSide(Sides.Top) + 0.001);
+                        }
+                        else
+                            break;
+                    }
+                }
+                else if (yVelocity > 0) {
+                    let hits = collisions.sort((a, b) => a.getSide(Sides.Bottom) - b.getSide(Sides.Bottom));
+                    for (let i = 0; i < hits.length; i++) {
+                        if (hits[i].getPos().y == hits[0].getPos().y) {
+                            this.newCollisions.get(Sides.Top).add(hits[i]);
+                            hits[i].notifyOfCollision(Sides.Bottom, this);
+                            this.setSide(Sides.Top, hits[i].getSide(Sides.Bottom) - 0.001);
+                        }
+                        else
+                            break;
+                    }
+                }
+            }
+            const xVelocity = this.getVelocity().x;
+            if (xVelocity != 0) {
+                this.getPos().x += xVelocity;
+                let collisions = game.getCollisions(this, 'x');
+                if (xVelocity < 0) {
+                    let hits = collisions.sort((b, a) => a.getSide(Sides.Right) - b.getSide(Sides.Right));
+                    for (let i = 0; i < hits.length; i++) {
+                        if (hits[i].getPos().y == hits[0].getPos().y) {
+                            this.newCollisions.get(Sides.Left).add(hits[i]);
+                            hits[i].notifyOfCollision(Sides.Right, this);
+                            this.setSide(Sides.Left, hits[i].getSide(Sides.Right) + 0.001);
+                        }
+                        else
+                            break;
+                    }
+                }
+                else if (xVelocity > 0) {
+                    let hits = collisions.sort((a, b) => a.getSide(Sides.Left) - b.getSide(Sides.Left));
+                    for (let i = 0; i < hits.length; i++) {
+                        if (hits[i].getPos().y == hits[0].getPos().y) {
+                            this.newCollisions.get(Sides.Right).add(hits[i]);
+                            hits[i].notifyOfCollision(Sides.Left, this);
+                            this.setSide(Sides.Right, hits[i].getSide(Sides.Left) - 0.001);
+                        }
+                        else
+                            break;
+                    }
+                }
+            }
+            const zVelocity = this.getVelocity().z;
+            if (zVelocity != 0) {
+                this.getPos().z += zVelocity;
+                let collisions = game.getCollisions(this, 'z');
+                if (zVelocity < 0) {
+                    let hits = collisions.sort((b, a) => a.getSide(Sides.Forward) - b.getSide(Sides.Forward));
+                    for (let i = 0; i < hits.length; i++) {
+                        if (hits[i].getPos().y == hits[0].getPos().y) {
+                            this.newCollisions.get(Sides.Back).add(hits[i]);
+                            hits[i].notifyOfCollision(Sides.Forward, this);
+                            this.setSide(Sides.Back, hits[i].getSide(Sides.Forward) + 0.0001);
+                        }
+                        else
+                            break;
+                    }
+                }
+                else if (zVelocity > 0) {
+                    let hits = collisions.sort((a, b) => a.getSide(Sides.Back) - b.getSide(Sides.Back));
+                    for (let i = 0; i < hits.length; i++) {
+                        if (hits[i].getPos().y == hits[0].getPos().y) {
+                            this.newCollisions.get(Sides.Forward).add(hits[i]);
+                            hits[i].notifyOfCollision(Sides.Back, this);
+                            this.setSide(Sides.Forward, hits[i].getSide(Sides.Back) - 0.0001);
+                        }
+                        else
+                            break;
+                    }
+                }
+            }
         }
         getCollisions(side) { return this.lastCollisions.get(side); }
     }
@@ -445,7 +456,7 @@ window.addEventListener('DOMContentLoaded', () => {
             testMaterial.diffuseTexture = new BABYLON.Texture('https://raw.githubusercontent.com/lattesipper/endlessplatformer/master/resources/images/testBox.png', scene);
             testMaterial.diffuseTexture.hasAlpha = true;
             testMaterial.backFaceCulling = false;
-            testMaterial.ambientColor = new BABYLON.Color3(1, 1, 1, 1);
+            testMaterial.ambientColor = new BABYLON.Color3(1, 1, 1);
             SPS.addShape(box, cubeCount);
             box.dispose();
             const mesh = SPS.buildMesh();
@@ -506,13 +517,43 @@ window.addEventListener('DOMContentLoaded', () => {
                 testMaterial.ambientColor = new BABYLON.Color3(1, 1, 1);
                 meshes[0].material = testMaterial;
                 meshes[0].position = this.getPos();
+                this.mesh = meshes[0];
+                const particleSystem = new BABYLON.ParticleSystem("particles", 2000, scene);
+                particleSystem.particleTexture = new BABYLON.Texture("textures/flare.png", scene);
+                particleSystem.emitter = meshes[0]; // the starting object, the emitter
+                particleSystem.minEmitBox = new BABYLON.Vector3(0, 0, 0); // Starting all from
+                particleSystem.maxEmitBox = new BABYLON.Vector3(0, 0, 0); // To...
+                particleSystem.color1 = new BABYLON.Color4(1.0, 1.0, 1.0, 1.0);
+                particleSystem.color2 = new BABYLON.Color4(1.0, 1.0, 1.0, 1.0);
+                particleSystem.colorDead = new BABYLON.Color4(0, 0, 0, 0.0);
+                particleSystem.minSize = 0.1;
+                particleSystem.maxSize = 0.5;
+                particleSystem.minLifeTime = 0.3;
+                particleSystem.maxLifeTime = 0.4;
+                particleSystem.emitRate = 2000;
+                particleSystem.blendMode = BABYLON.ParticleSystem.BLENDMODE_ONEONE;
+                particleSystem.gravity = new BABYLON.Vector3(0, 0, 0);
+                particleSystem.direction1 = new BABYLON.Vector3(-1, -1, -1);
+                particleSystem.direction2 = new BABYLON.Vector3(1, 1, 1);
+                particleSystem.minAngularSpeed = 0;
+                particleSystem.maxAngularSpeed = Math.PI;
+                particleSystem.minEmitPower = 4;
+                particleSystem.maxEmitPower = 6;
+                particleSystem.updateSpeed = 0.005;
+                this.explosionParticleSystem = particleSystem;
+                this.setSize(new BABYLON.Vector3(0.6658418, 0.8655933, 0.6658418));
+                this.setPos(new BABYLON.Vector3(0, 3, 0));
             });
-            this.setSize(new BABYLON.Vector3(0.6658418, 0.8655933, 0.6658418));
-            this.setPos(new BABYLON.Vector3(0, 3, 0));
-            // const mesh =  BABYLON.MeshBuilder.CreateCylinder("cone", {diameterTop: 1, height: 1, tessellation: 16}, scene);
-            // mesh.position = this.getPos();
-            // mesh.scaling = this.getSize();
             camera.setFollower(this);
+        }
+        disable() {
+            super.disable();
+            this.mesh.visibility = 0;
+        }
+        kill() {
+            this.disable();
+            this.explosionParticleSystem.start();
+            setInterval(() => this.explosionParticleSystem.stop(), 150);
         }
         static LoadResources() {
             Player.sndJump = new BABYLON.Sound("", "https://raw.githubusercontent.com/lattesipper/endlessplatformer/master/resources/sounds/jump.wav", scene, null, {
@@ -530,7 +571,7 @@ window.addEventListener('DOMContentLoaded', () => {
             if (!Player.sndHitHead.isPlaying && side == Sides.Top && physBox instanceof FallBox)
                 Player.sndHitHead.play();
         }
-        update(t) {
+        determineVelocities() {
             let wKey;
             let aKey;
             let sKey;
@@ -667,7 +708,16 @@ window.addEventListener('DOMContentLoaded', () => {
                     this.getVelocity().y = -0.5;
                 }
             }
-            super.update(t);
+        }
+        beforeCollisions() {
+            super.beforeCollisions();
+            this.determineVelocities();
+        }
+        afterCollisions() {
+            super.afterCollisions();
+            if (this.getCollisions(Sides.Bottom).size && this.getCollisions(Sides.Top).size) {
+                this.kill();
+            }
         }
     }
     Player.moveSpeed = 0.1;
