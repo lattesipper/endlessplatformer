@@ -532,7 +532,7 @@ class Player extends PhysBox {
             meshes[0].position = this.getPos();
         });
 
-        this.setSize(new BABYLON.Vector3(0.512186, 0.665841, 0.512186));
+        this.setSize(new BABYLON.Vector3(0.6658418, 0.8655933, 0.6658418));
         this.setPos(new BABYLON.Vector3(0, 3, 0));
         // const mesh =  BABYLON.MeshBuilder.CreateCylinder("cone", {diameterTop: 1, height: 1, tessellation: 16}, scene);
         // mesh.position = this.getPos();
