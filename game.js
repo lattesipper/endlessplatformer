@@ -500,10 +500,14 @@ window.addEventListener('DOMContentLoaded', () => {
     class Player extends PhysBox {
         constructor() {
             super();
-            BABYLON.SceneLoader.ImportMesh("", "./", "player.obj", scene, function (meshes, particleSystems, skeletons) {
+            BABYLON.SceneLoader.ImportMesh("", "https://raw.githubusercontent.com/lattesipper/endlessplatformer/master/resources/meshes/", "player.obj", scene, (meshes, particleSystems, skeletons) => {
+                const testMaterial = new BABYLON.StandardMaterial('', scene);
+                testMaterial.diffuseTexture = new BABYLON.Texture('https://raw.githubusercontent.com/lattesipper/endlessplatformer/master/resources/meshes/player.png', scene);
+                testMaterial.ambientColor = new BABYLON.Color3(1, 1, 1);
+                meshes[0].material = testMaterial;
                 meshes[0].position = this.getPos();
             });
-            this.setSize(new BABYLON.Vector3(0.5, 0.65, 0.5));
+            this.setSize(new BABYLON.Vector3(0.512186, 0.665841, 0.512186));
             this.setPos(new BABYLON.Vector3(0, 3, 0));
             // const mesh =  BABYLON.MeshBuilder.CreateCylinder("cone", {diameterTop: 1, height: 1, tessellation: 16}, scene);
             // mesh.position = this.getPos();
