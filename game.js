@@ -75,15 +75,17 @@ window.addEventListener('DOMContentLoaded', () => {
                     var animationBox = new BABYLON.Animation("myAnimation", "alpha", 60, BABYLON.Animation.ANIMATIONTYPE_FLOAT, BABYLON.Animation.ANIMATIONLOOPMODE_CONSTANT);
                     animationBox.setKeys([{ frame: 0, value: camera.alpha }, { frame: 20, value: camera.alpha + (Math.PI / 2) }]);
                     camera.animations = [animationBox];
-                    scene.beginAnimation(camera, 0, 20, false, 1, () => { this.rotating = false; this.rotationIndex = (this.rotationIndex == 3 ? 0 : this.rotationIndex + 1); });
+                    scene.beginAnimation(camera, 0, 20, false, 1, () => { this.rotating = false; game.play(); this.rotationIndex = (this.rotationIndex == 3 ? 0 : this.rotationIndex + 1); });
                     this.rotating = true;
+                    game.pause();
                     GameCamera.rotateSound.play();
                 }
                 else if (isKeyPressed('arrowleft') && !this.rotating) {
                     var animationBox = new BABYLON.Animation("myAnimation2", "alpha", 60, BABYLON.Animation.ANIMATIONTYPE_FLOAT, BABYLON.Animation.ANIMATIONLOOPMODE_CONSTANT);
                     animationBox.setKeys([{ frame: 0, value: camera.alpha }, { frame: 20, value: camera.alpha - (Math.PI / 2) }]);
                     camera.animations = [animationBox];
-                    scene.beginAnimation(camera, 0, 20, false, 1, () => { this.rotating = false; this.rotationIndex = (this.rotationIndex == 0 ? 3 : this.rotationIndex - 1); });
+                    scene.beginAnimation(camera, 0, 20, false, 1, () => { this.rotating = false; game.play(); this.rotationIndex = (this.rotationIndex == 0 ? 3 : this.rotationIndex - 1); });
+                    game.pause();
                     this.rotating = true;
                     GameCamera.rotateSound.play();
                 }
@@ -127,11 +129,14 @@ window.addEventListener('DOMContentLoaded', () => {
     Sides.Bottom = new Sides('y', -1);
     class Game {
         constructor() {
+            this.running = true;
             this.fallboxClusters = [];
             this.yIndexes = new Map();
             this.physBoxes = [];
             this.physBoxesY = [];
             scene.onBeforeRenderObservable.add(() => {
+                if (!this.running)
+                    return;
                 this.lavaGround.position.y += 0.015;
                 this.insertionSort();
                 this.physBoxes.forEach(pbox => pbox.beforeCollisions());
@@ -151,6 +156,8 @@ window.addEventListener('DOMContentLoaded', () => {
             lavaGround.material = lavaMaterial;
             this.lavaGround = lavaGround;
         }
+        pause() { this.running = false; }
+        play() { this.running = true; }
         start() {
             this.createNewCluster(200, 20);
             let bottomBox = new FloorBox();
@@ -420,9 +427,18 @@ window.addEventListener('DOMContentLoaded', () => {
             for (let i = 0; i < cubeCount; i++) {
                 let boxB = new FallBox();
                 let obstructed = true;
+                const rnd = Math.random();
+                if (rnd <= 0.3) {
+                    boxB.setSize(BABYLON.Vector3.One().scale(2));
+                }
+                else if (rnd <= 0.6) {
+                    boxB.setSize(BABYLON.Vector3.One().scale(3));
+                }
+                else {
+                    boxB.setSize(BABYLON.Vector3.One().scale(5));
+                }
                 while (obstructed) {
-                    boxB.setSize(BABYLON.Vector3.One().scale(2 + Math.random() * 3));
-                    boxB.setPos(new BABYLON.Vector3(-5 + Math.random() * 10, startY + Math.random() * 1200, -5 + Math.random() * 10));
+                    boxB.setPos(new BABYLON.Vector3(-5 + Math.random() * 10, startY + Math.random() * 750, -5 + Math.random() * 10));
                     obstructed = false;
                     for (let i = startIndex; i < physObjs.length; i++) {
                         if (physObjs[i].intersects(boxB)) {
@@ -431,7 +447,7 @@ window.addEventListener('DOMContentLoaded', () => {
                         }
                     }
                 }
-                boxB.setVelocity(new BABYLON.Vector3(0, -0.1, 0));
+                boxB.setVelocity(new BABYLON.Vector3(0, -0.075, 0));
                 boxB.onEvent('freeze', (status) => {
                     frozenCount += (status == true ? 1 : -1);
                     this.active = (frozenCount != fallBoxes.length);
@@ -604,13 +620,33 @@ window.addEventListener('DOMContentLoaded', () => {
             }
             let avgYSpeed = 0;
             let count = 0;
+            if (this.mesh) {
+                if (isKeyPressed(wKey)) {
+                    this.mesh.rotation.x = Math.min(this.mesh.rotation.x + 0.05, 0.15);
+                }
+                else if (isKeyPressed(sKey)) {
+                    this.mesh.rotation.x = Math.max(this.mesh.rotation.x - 0.05, -0.15);
+                }
+                else {
+                    this.mesh.rotation.x = (Math.abs(this.mesh.rotation.x) <= 0.05) ? 0 : this.mesh.rotation.x + 0.05 * Math.sign(this.mesh.rotation.x) * -1;
+                }
+                if (isKeyPressed(aKey)) {
+                    this.mesh.rotation.z = Math.min(this.mesh.rotation.z + 0.05, 0.15);
+                }
+                else if (isKeyPressed(dKey)) {
+                    this.mesh.rotation.z = Math.max(this.mesh.rotation.z - 0.05, -0.15);
+                }
+                else {
+                    this.mesh.rotation.z = (Math.abs(this.mesh.rotation.z) <= 0.05) ? 0 : this.mesh.rotation.z + 0.05 * Math.sign(this.mesh.rotation.z) * -1;
+                }
+            }
             if (!this.getCollisions(Sides.Top).size && this.getVelocity().y < 0) {
                 if (this.getCollisions(Sides.Left).size) {
                     count += this.getCollisions(Sides.Left).size;
                     this.getCollisions(Sides.Left).forEach((physBox) => avgYSpeed += physBox.getVelocity().y);
                     if (isKeyPressed(' ')) {
-                        this.getVelocity().x = 0.2;
-                        this.getVelocity().y = 0.4;
+                        this.getVelocity().x = Player.sideXZImpulse;
+                        this.getVelocity().y = Player.sideJumpImpulse;
                         if (!Player.sndHitHead.isPlaying)
                             Player.sndJump.play();
                     }
@@ -619,8 +655,8 @@ window.addEventListener('DOMContentLoaded', () => {
                     count += this.getCollisions(Sides.Right).size;
                     this.getCollisions(Sides.Right).forEach((physBox) => avgYSpeed += physBox.getVelocity().y);
                     if (isKeyPressed(' ')) {
-                        this.getVelocity().x = -0.2;
-                        this.getVelocity().y = 0.4;
+                        this.getVelocity().x = -Player.sideXZImpulse;
+                        this.getVelocity().y = Player.sideJumpImpulse;
                         if (!Player.sndHitHead.isPlaying)
                             Player.sndJump.play();
                     }
@@ -629,8 +665,8 @@ window.addEventListener('DOMContentLoaded', () => {
                     count += this.getCollisions(Sides.Forward).size;
                     this.getCollisions(Sides.Forward).forEach((physBox) => avgYSpeed += physBox.getVelocity().y);
                     if (isKeyPressed(' ')) {
-                        this.getVelocity().z = -0.2;
-                        this.getVelocity().y = 0.4;
+                        this.getVelocity().z = -Player.sideXZImpulse;
+                        this.getVelocity().y = Player.sideJumpImpulse;
                         if (!Player.sndHitHead.isPlaying)
                             Player.sndJump.play();
                     }
@@ -639,8 +675,8 @@ window.addEventListener('DOMContentLoaded', () => {
                     count += this.getCollisions(Sides.Back).size;
                     this.getCollisions(Sides.Back).forEach((physBox) => avgYSpeed += physBox.getVelocity().y);
                     if (isKeyPressed(' ')) {
-                        this.getVelocity().z = 0.2;
-                        this.getVelocity().y = 0.4;
+                        this.getVelocity().z = Player.sideXZImpulse;
+                        this.getVelocity().y = Player.sideJumpImpulse;
                         if (!Player.sndHitHead.isPlaying)
                             Player.sndJump.play();
                     }
@@ -648,11 +684,11 @@ window.addEventListener('DOMContentLoaded', () => {
             }
             if (count && !isKeyPressed(' ')) {
                 avgYSpeed /= count;
-                avgYSpeed -= 0.01;
+                avgYSpeed -= Player.sideSlideSpeed;
                 this.getVelocity().y = avgYSpeed;
             }
             else {
-                this.getVelocity().y = Math.max(this.getVelocity().y - 0.008, -0.5);
+                this.getVelocity().y = Math.max(this.getVelocity().y - Player.gravity, -Player.maxVerticalSpeed);
             }
             if (this.getCollisions(Sides.Bottom).size) {
                 if (isKeyPressed(wKey)) {
@@ -676,36 +712,30 @@ window.addEventListener('DOMContentLoaded', () => {
                 if (isKeyPressed(' ')) {
                     if (!Player.sndHitHead.isPlaying)
                         Player.sndJump.play();
-                    this.getVelocity().y = 0.3;
+                    this.getVelocity().y = Player.jumpImpulse;
                 }
             }
             else {
                 if (isKeyPressed(wKey)) {
-                    this.getVelocity().z = Math.min(this.getVelocity().z + 0.01, Player.moveSpeed);
+                    this.getVelocity().z = Math.min(this.getVelocity().z + Player.airMoveAcceleration, Player.moveSpeed);
                 }
                 else if (isKeyPressed(sKey)) {
-                    this.getVelocity().z = Math.max(this.getVelocity().z - 0.01, -Player.moveSpeed);
-                }
-                else if (Math.abs(this.getVelocity().z) > 0.01) {
-                    this.getVelocity().z += this.getVelocity().z > 0 ? -0.01 : 0.01;
+                    this.getVelocity().z = Math.max(this.getVelocity().z - Player.airMoveAcceleration, -Player.moveSpeed);
                 }
                 else {
-                    this.getVelocity().z = 0;
+                    this.getVelocity().z = (Math.abs(this.getVelocity().z) < Player.airMoveAcceleration) ? 0 : this.getVelocity().z + Player.airMoveAcceleration * Math.sign(this.getVelocity().z) * -1;
                 }
                 if (isKeyPressed(aKey)) {
-                    this.getVelocity().x = Math.max(this.getVelocity().x - 0.01, -Player.moveSpeed);
+                    this.getVelocity().x = Math.max(this.getVelocity().x - Player.airMoveAcceleration, -Player.moveSpeed);
                 }
                 else if (isKeyPressed(dKey)) {
-                    this.getVelocity().x = Math.min(this.getVelocity().x + 0.01, Player.moveSpeed);
-                }
-                else if (Math.abs(this.getVelocity().x) > 0.01) {
-                    this.getVelocity().x += this.getVelocity().x > 0 ? -0.01 : 0.01;
+                    this.getVelocity().x = Math.min(this.getVelocity().x + Player.airMoveAcceleration, Player.moveSpeed);
                 }
                 else {
-                    this.getVelocity().x = 0;
+                    this.getVelocity().x = (Math.abs(this.getVelocity().x) < Player.airMoveAcceleration) ? 0 : this.getVelocity().x + Player.airMoveAcceleration * Math.sign(this.getVelocity().x) * -1;
                 }
                 if (isKeyPressed('control')) {
-                    this.getVelocity().y = -0.5;
+                    this.getVelocity().y = -Player.crushImpulse;
                 }
             }
         }
@@ -721,6 +751,14 @@ window.addEventListener('DOMContentLoaded', () => {
         }
     }
     Player.moveSpeed = 0.1;
+    Player.airMoveAcceleration = 0.01;
+    Player.jumpImpulse = 0.3;
+    Player.crushImpulse = 0.5;
+    Player.sideJumpImpulse = 0.4;
+    Player.sideXZImpulse = 0.2;
+    Player.gravity = 0.008;
+    Player.sideSlideSpeed = 0.01;
+    Player.maxVerticalSpeed = 0.5;
     Player.LoadResources();
     game.start();
 });
