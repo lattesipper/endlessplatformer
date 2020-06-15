@@ -1,16 +1,13 @@
 import * as BABYLON from 'babylonjs';
 import { Scene, BackEase } from 'babylonjs';
 
-
 window.addEventListener('DOMContentLoaded', () => {
-
-let vZero : BABYLON.Vector3 = BABYLON.Vector3.Zero();
 
 // Create canvas and engine.
 const canvas = <HTMLCanvasElement>(document.getElementById('renderCanvas'));
 const engine = new BABYLON.Engine(canvas, true);
 const scene = new BABYLON.Scene(engine);
-
+const light = new BABYLON.DirectionalLight("dir01", new BABYLON.Vector3(-1, -2, 1), scene);
 scene.fogMode = BABYLON.Scene.FOGMODE_EXP;
 scene.fogDensity = 0.01;
 scene.fogStart = 20.0;
@@ -19,9 +16,10 @@ scene.fogColor = new BABYLON.Color3(1, 0, 0);
 scene.clearColor = new BABYLON.Color4(1, 0, 0, 1.0);
 scene.ambientColor = new BABYLON.Color3(0.3, 0.3, 0.3);
 
+
+// input manager (to refactor into a class)
 const inputMap : Map<string, boolean> = new Map(); 
 scene.actionManager = new BABYLON.ActionManager(scene);
-
 scene.actionManager.registerAction(new BABYLON.ExecuteCodeAction(BABYLON.ActionManager.OnKeyDownTrigger, function (evt) {
     const key = evt.sourceEvent.key.toLowerCase();
     inputMap.set(key, true);
@@ -30,24 +28,19 @@ scene.actionManager.registerAction(new BABYLON.ExecuteCodeAction(BABYLON.ActionM
     const key = evt.sourceEvent.key.toLowerCase();
     inputMap.set(key, false);
 }));
-
 const isKeyPressed = (key) => {
     return inputMap.get(key);
 };
-
-// Create a basic light, aiming 0,1,0 - meaning, to the sky.
-const light = new BABYLON.DirectionalLight("dir01", new BABYLON.Vector3(-1, -2, 1), scene);
 
 // Run the render loop.
 engine.runRenderLoop(() => {
     scene.render();
 });
-
-// The canvas/window resize event handler.
 window.addEventListener('resize', () => {
     engine.resize();
 });
 
+// observable object that fires events
 class Observable {
     public onEvent(eventName, callback) {
         if (!this.subscribers.has(eventName))
@@ -62,6 +55,7 @@ class Observable {
     private subscribers : Map<string, Set<CallableFunction>> = new Map();
 }
 
+// rotateable camera
 class GameCamera {
     public static LoadResources() {
         GameCamera.rotateSound = new BABYLON.Sound("", "https://raw.githubusercontent.com/lattesipper/endlessplatformer/master/resources/sounds/rotateView.wav", scene, null, {
@@ -76,21 +70,23 @@ class GameCamera {
     public constructor() {
         const camera = new BABYLON.ArcRotateCamera("Camera", 0, 0, 25, new BABYLON.Vector3(0, 0, 0), scene);
         camera.setPosition(new BABYLON.Vector3(0, 0, 0));
-        camera.beta = 0.5;
+        camera.beta = 0.65;
         camera.alpha = 4.71238898039;
         camera.radius = 25;
         camera.parent = this.node;
         this.camera = camera;
 
         scene.onBeforeRenderObservable.add(() => {
+            // y-track the follower
             if (this.follower)
                 this.node.position.y = this.follower.getPos().y;
-            
+            // wrap camera alpha
             if (camera.alpha < 0) {
                 camera.alpha = (Math.PI * 2) + camera.alpha;
             } else if (camera.alpha > (Math.PI * 2))  {
                 camera.alpha = camera.alpha - (Math.PI * 2);
             }
+            // rotate camera right 90 degrees
             if (isKeyPressed('arrowright') && !this.rotating) {
                 var animationBox : BABYLON.Animation = new BABYLON.Animation("myAnimation", "alpha", 60, BABYLON.Animation.ANIMATIONTYPE_FLOAT, BABYLON.Animation.ANIMATIONLOOPMODE_CONSTANT);
                 animationBox.setKeys([ { frame: 0, value: camera.alpha }, { frame: 20, value: camera.alpha + (Math.PI / 2) } ]);
@@ -99,7 +95,9 @@ class GameCamera {
                 this.rotating = true;
                 game.pause();
                 GameCamera.rotateSound.play();
-            } else if (isKeyPressed('arrowleft') && !this.rotating) {
+            } 
+            // rotate camera left 90 degrees
+            else if (isKeyPressed('arrowleft') && !this.rotating) {
                 var animationBox = new BABYLON.Animation("myAnimation2", "alpha", 60, BABYLON.Animation.ANIMATIONTYPE_FLOAT, BABYLON.Animation.ANIMATIONLOOPMODE_CONSTANT);
                 animationBox.setKeys( [ { frame: 0, value: camera.alpha },  { frame: 20, value: camera.alpha - (Math.PI / 2) }]);
                 camera.animations = [animationBox];
@@ -119,10 +117,9 @@ class GameCamera {
     private node: BABYLON.TransformNode = new BABYLON.TransformNode('', scene);
 }
 GameCamera.LoadResources();
-
 const camera = new GameCamera();
 
-
+// sides enum class
 class Sides {
     private constructor (dim, direction) {
         this.dim = dim;
@@ -144,11 +141,9 @@ class Sides {
     public static Back = new Sides('z', -1);
     public static Top = new Sides('y', 1);
     public static Bottom = new Sides('y', -1);
-
     public dim : string;
     public direction : number;
 }
-
 
 class Game {
     public constructor() {  
@@ -156,13 +151,17 @@ class Game {
             if (!this.running)
                 return;
             this.lavaGround.position.y += 0.015;
-            this.insertionSort();
+            // update the sorted physbox list for sort&sweep collisions
+            this.ySortBoxes();
+            // resolve physbox collisions
             this.physBoxes.forEach(pbox => pbox.beforeCollisions());
             this.physBoxes.forEach(pbox => pbox.resolveCollisions(0));
             this.physBoxes.forEach(pbox => pbox.afterCollisions());
+            // update fallbox clusters
             this.fallboxClusters.forEach(cluster => cluster.update());
         });
 
+        // create lava
         const lavaGround = BABYLON.Mesh.CreateGround("ground", 500, 500, 100, scene);
         lavaGround.visibility = 0.5;
         lavaGround.position.y = -10;
@@ -174,36 +173,42 @@ class Game {
         lavaMaterial.unlit = true;
         lavaGround.material = lavaMaterial;
         this.lavaGround = lavaGround;
+
+        // play background music
+        GameCamera.backgroundMusic = new BABYLON.Sound("", "https://raw.githubusercontent.com/lattesipper/endlessplatformer/master/resources/music/dreamsofabove.mp3", scene, null, {
+            loop: true,
+            autoplay:  true,
+            volume: 0.5
+        });
     }
     public pause() { this.running = false; }
     public play() { this.running = true; }
     public start() {
+        // create initial cube cluster
         this.createNewCluster(200, 20);
+        // create frozen box at the bottom to catch them all
         let bottomBox = new FloorBox();
         bottomBox
                 .freeze()
                 .setPos(new BABYLON.Vector3(0, 0, 0))
                 .setSize(new BABYLON.Vector3(10, 10, 10));
         this.addPhysBox(bottomBox);
-
+        // all is ready, add the player
         const player = new Player();
         player.setPos(new BABYLON.Vector3(0, 7, 0));
         this.addPhysBox(player);
         this.player = player;
     }
-    public createNewCluster(cubeCount, startY) {
-        this.fallboxClusters.push(new FallBoxCluster(cubeCount, startY));
-    }
+    public createNewCluster(cubeCount, startY) { this.fallboxClusters.push(new FallBoxCluster(cubeCount, startY)); }
 
-    public addPhysBox(box) {
-        this.physBoxes.push(box);
-        this.physBoxesY.push(box);
-    }
+    public addPhysBox(box) { this.physBoxes.push(box); this.physBoxesY.push(box); }
 
     public getPhysObjects() { return this.physBoxes; }
     public getPlayer() : Player { return this.player; }
 
-    private insertionSort() { 
+    // SORT
+    private ySortBoxes() { 
+        // O(N) average case for insertion sort after physbox updates
         for (let i = 1; i < this.physBoxesY.length; i++) {
             let j = i - 1;
             let tmp = this.physBoxesY[i];
@@ -215,6 +220,7 @@ class Game {
             this.yIndexes.set(tmp, j+1);
         }
     }
+    // SWEEP AND PRUNE
     public getCollisions(physBox: PhysBox, dim: string) {
         let yIndex = this.yIndexes.get(physBox);
         let collisions = [];
@@ -223,24 +229,20 @@ class Game {
             for (let i = yIndex; i >= 0; i--) {
                 let candiate = this.physBoxesY[i];
                 tests++;
-                if (candiate.isActive() && physBox.intersects(candiate)) {
+                if (candiate.isActive() && physBox.intersects(candiate))
                     collisions.push(candiate);
-                }
-                if (physBox.getSide(Sides.Bottom) > (candiate.getPos().y + 2.5)) {
+                if (physBox.getSide(Sides.Bottom) > (candiate.getPos().y + (PhysBox.MAX_Y_SIZE/2)))
                     break;
-                }
             }
         }
         if (dim != 'y' || physBox.getVelocity().y > 0) {
             for (let i = yIndex; i < this.physBoxes.length; i++) {
                 tests++;
                 let candiate = this.physBoxesY[i];
-                if (candiate.isActive() && physBox.intersects(candiate)) {
+                if (candiate.isActive() && physBox.intersects(candiate))
                     collisions.push(candiate);
-                }
-                if (physBox.getSide(Sides.Top) < (candiate.getPos().y - 2.5)) {
+                if (physBox.getSide(Sides.Top) < (candiate.getPos().y - (PhysBox.MAX_Y_SIZE/2)))
                     break;
-                }
             }
         }
         if (physBox instanceof Player && Math.random() > 0.99) {
@@ -248,13 +250,15 @@ class Game {
         }
         return collisions;
     }
-    private running : boolean = true;
-    private fallboxClusters : Array<FallBoxCluster> = [];
-    private yIndexes = new Map<PhysBox, number>();
-    private physBoxes: Array<PhysBox> = [];
-    private physBoxesY: Array<PhysBox> = []; 
-    private player: Player;
-    private lavaGround: BABYLON.Mesh;
+    private running : boolean = true;                       // game running or paused?
+    private fallboxClusters : Array<FallBoxCluster> = [];  
+
+    private physBoxesY: Array<PhysBox> = [];                // sorted list of physboxes
+    private physBoxes: Array<PhysBox> = [];                 // unsorted list of physboxes
+    private yIndexes = new Map<PhysBox, number>();          // physbox -> sorted Y index    
+
+    private player: Player;                                 // the player
+    private lavaGround: BABYLON.Mesh;                       // the lava
 }
 
 const game = new Game();
@@ -265,10 +269,8 @@ class BoundBox extends GameObj {
     public setPos(pos: BABYLON.Vector3) : BoundBox { this.node.position.copyFrom(pos); return this; }
     public setSize(size: BABYLON.Vector3) : BoundBox { this.node.scaling.copyFrom(size); return this; }
     public getSize() : BABYLON.Vector3 { return this.node.scaling; }
-
     public getSide(side : Sides) { return this.node.position[side.dim] + (this.node.scaling[side.dim] * 0.5 * side.direction) }
     public setSide(side : Sides, value : number) { this.node.position[side.dim] = value - (this.node.scaling[side.dim] * 0.5 * side.direction); }
-
     public intersects(otherBox: BoundBox) : boolean {
         // bounding boxes can't collide with themselves
         if (otherBox == this)
@@ -283,7 +285,6 @@ class BoundBox extends GameObj {
             !(this.getSide(Sides.Top) < otherBox.getSide(Sides.Bottom))
         );
     }
-
     private node: BABYLON.TransformNode = new BABYLON.TransformNode('', scene);
 }
 
@@ -350,6 +351,7 @@ class PhysBox extends BoundBox {
     public resolveCollisions(t : number) {
         if (this.frozen || !this.active)
             return;
+        // resolve in Y axis
         const yVelocity = this.getVelocity().y;
         if (yVelocity != 0) {
             this.getPos().y += yVelocity;
@@ -374,6 +376,7 @@ class PhysBox extends BoundBox {
                 }
             }
         }
+        // resolve in X axis
         const xVelocity = this.getVelocity().x;
         if (xVelocity != 0) {
             this.getPos().x += xVelocity;
@@ -398,6 +401,7 @@ class PhysBox extends BoundBox {
                 }
             }
         }
+        // resolve in Z axis
         const zVelocity = this.getVelocity().z;
         if (zVelocity != 0) {
             this.getPos().z += zVelocity;
@@ -423,6 +427,7 @@ class PhysBox extends BoundBox {
             }
         }
     }
+    private backgroundMusic : BABYLON.Sound;
     private frozen: boolean = false;
     private active: boolean = true;
     private velocity: BABYLON.Vector3 = BABYLON.Vector3.Zero();
@@ -430,6 +435,9 @@ class PhysBox extends BoundBox {
 
     protected getCollisions(side) : Set<PhysBox> { return this.lastCollisions.get(side); }
 
+    public static MAX_Y_SIZE: number = 5;
+
+    // collisions on 6 sides of physbox
     private lastCollisions: Map<Sides, Set<PhysBox>> = new Map([
         [Sides.Left, new Set<PhysBox>()], [Sides.Right, new Set<PhysBox>()], [Sides.Top, new Set<PhysBox>()], [Sides.Bottom, new Set<PhysBox>()], [Sides.Forward, new Set<PhysBox>()], [Sides.Back, new Set<PhysBox>()]
     ]);
@@ -438,6 +446,7 @@ class PhysBox extends BoundBox {
     ]);
 }
 
+// creates and manages a cluster of fallboxes
 class FallBoxCluster {
     public constructor(cubeCount: number, startY: number) {
         const fallBoxes = [];
@@ -624,24 +633,25 @@ class Player extends PhysBox {
         let avgYSpeed = 0;
         let count = 0;
 
+        // update rotation animation
         if (this.mesh) {
-            if (isKeyPressed(wKey)) {
+            if (this.getVelocity().z > 0) {
                 this.mesh.rotation.x = Math.min(this.mesh.rotation.x + 0.05, 0.15);
-            } else if (isKeyPressed(sKey)) {
+            } else if (this.getVelocity().z < 0) {
                 this.mesh.rotation.x = Math.max(this.mesh.rotation.x - 0.05, -0.15);
             } else {
                 this.mesh.rotation.x = (Math.abs(this.mesh.rotation.x) <= 0.05) ? 0 : this.mesh.rotation.x + 0.05 * Math.sign(this.mesh.rotation.x) * -1;
             }
-            if (isKeyPressed(aKey)) {
+            if (this.getVelocity().x < 0) {
                 this.mesh.rotation.z = Math.min(this.mesh.rotation.z + 0.05, 0.15);
-            } else if (isKeyPressed(dKey)) {
+            } else if (this.getVelocity().x > 0) {
                 this.mesh.rotation.z = Math.max(this.mesh.rotation.z - 0.05, -0.15);
             } else {
                 this.mesh.rotation.z = (Math.abs(this.mesh.rotation.z) <= 0.05) ? 0 : this.mesh.rotation.z + 0.05 * Math.sign(this.mesh.rotation.z) * -1;
             }
         }
 
-
+        // test if the player is sliding along a physbox's wall
         if (!this.getCollisions(Sides.Top).size && this.getVelocity().y < 0) {
             if (this.getCollisions(Sides.Left).size) {
                 count += this.getCollisions(Sides.Left).size;
@@ -677,13 +687,16 @@ class Player extends PhysBox {
             }
         }
         if (count && !isKeyPressed(' ')) {
+            // sliding, set players velocity to slide speed
             avgYSpeed /= count;
             avgYSpeed -= Player.sideSlideSpeed;
             this.getVelocity().y = avgYSpeed;
         } else {
+            // not sliding, apply gravity as normal
             this.getVelocity().y = Math.max(this.getVelocity().y - Player.gravity, -Player.maxVerticalSpeed);
         }
 
+        // grounded, apply movement velocity instantaneously
         if (this.getCollisions(Sides.Bottom).size) {
             if (isKeyPressed(wKey)) {
                 this.getVelocity().z = Player.moveSpeed;
@@ -703,7 +716,9 @@ class Player extends PhysBox {
                 if (!Player.sndHitHead.isPlaying) Player.sndJump.play();
                 this.getVelocity().y = Player.jumpImpulse;
             }    
-        } else {
+        } 
+        // in-air, apply movement velocity through acceleration
+        else {
             if (isKeyPressed(wKey)) {
                 this.getVelocity().z = Math.min(this.getVelocity().z + Player.airMoveAcceleration, Player.moveSpeed);
             } else if (isKeyPressed(sKey)) {
