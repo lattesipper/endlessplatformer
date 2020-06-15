@@ -231,9 +231,9 @@ window.addEventListener('DOMContentLoaded', () => {
                         break;
                 }
             }
-            if (physBox instanceof Player && Math.random() > 0.99) {
-                console.log(tests);
-            }
+            // if (physBox instanceof Player && Math.random() > 0.99) {
+            //     console.log(tests);
+            // }
             return collisions;
         }
     }

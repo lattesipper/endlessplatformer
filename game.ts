@@ -245,9 +245,9 @@ class Game {
                     break;
             }
         }
-        if (physBox instanceof Player && Math.random() > 0.99) {
-            console.log(tests);
-        }
+        // if (physBox instanceof Player && Math.random() > 0.99) {
+        //     console.log(tests);
+        // }
         return collisions;
     }
     private running : boolean = true;                       // game running or paused?
@@ -568,7 +568,7 @@ class Player extends PhysBox {
             this.mesh = meshes[0];
 
             const particleSystem = new BABYLON.ParticleSystem("particles", 2000, scene);
-            particleSystem.particleTexture = new BABYLON.Texture("textures/flare.png", scene);
+            particleSystem.particleTexture = new BABYLON.Texture("https://raw.githubusercontent.com/lattesipper/endlessplatformer/master/resources/images/flare.png", scene);
             particleSystem.emitter = meshes[0]; // the starting object, the emitter
             particleSystem.minEmitBox = new BABYLON.Vector3(0, 0, 0); // Starting all from
             particleSystem.maxEmitBox = new BABYLON.Vector3(0, 0, 0); // To...
