@@ -12,6 +12,33 @@ window.addEventListener('DOMContentLoaded', () => {
     scene.fogColor = new BABYLON.Color3(1, 0, 0);
     scene.clearColor = new BABYLON.Color4(1, 0, 0, 1.0);
     scene.ambientColor = new BABYLON.Color3(0.3, 0.3, 0.3);
+    // GUI (to refactor into a class)
+    const advancedTexture = BABYLON.GUI.AdvancedDynamicTexture.CreateFullscreenUI("UI");
+    advancedTexture.idealWidth = 1080;
+    const text1 = new BABYLON.GUI.TextBlock();
+    text1.text = "50ft";
+    text1.color = "black";
+    text1.fontSize = 40;
+    text1.horizontalAlignment = BABYLON.GUI.Control.HORIZONTAL_ALIGNMENT_RIGHT;
+    text1.verticalAlignment = BABYLON.GUI.Control.VERTICAL_ALIGNMENT_TOP;
+    text1.left = -25;
+    text1.top = 25;
+    text1.resizeToFit = true;
+    text1.outlineWidth = 4;
+    text1.outlineColor = 'white';
+    advancedTexture.addControl(text1);
+    const text2 = new BABYLON.GUI.TextBlock();
+    text2.text = "50ft";
+    text2.color = "black";
+    text2.fontSize = 30;
+    text2.horizontalAlignment = BABYLON.GUI.Control.HORIZONTAL_ALIGNMENT_RIGHT;
+    text2.verticalAlignment = BABYLON.GUI.Control.VERTICAL_ALIGNMENT_TOP;
+    text2.left = -25;
+    text2.top = 65;
+    text2.resizeToFit = true;
+    text2.outlineWidth = 4;
+    text2.outlineColor = 'white';
+    advancedTexture.addControl(text2);
     // input manager (to refactor into a class)
     const inputMap = new Map();
     scene.actionManager = new BABYLON.ActionManager(scene);
@@ -544,6 +571,7 @@ window.addEventListener('DOMContentLoaded', () => {
     class Player extends PhysBox {
         constructor() {
             super();
+            this.bestHeight = 0;
             BABYLON.SceneLoader.ImportMesh("", "https://raw.githubusercontent.com/lattesipper/endlessplatformer/master/resources/meshes/", "player.obj", scene, (meshes, particleSystems, skeletons) => {
                 const testMaterial = new BABYLON.StandardMaterial('', scene);
                 testMaterial.diffuseTexture = new BABYLON.Texture('https://raw.githubusercontent.com/lattesipper/endlessplatformer/master/resources/meshes/player.png', scene);
@@ -552,7 +580,7 @@ window.addEventListener('DOMContentLoaded', () => {
                 meshes[0].position = this.getPos();
                 this.mesh = meshes[0];
                 const particleSystem = new BABYLON.ParticleSystem("particles", 2000, scene);
-                particleSystem.particleTexture = new BABYLON.Texture("textures/flare.png", scene);
+                particleSystem.particleTexture = new BABYLON.Texture("https://raw.githubusercontent.com/lattesipper/endlessplatformer/master/resources/images/flare.png", scene);
                 particleSystem.emitter = meshes[0]; // the starting object, the emitter
                 particleSystem.minEmitBox = new BABYLON.Vector3(0, 0, 0); // Starting all from
                 particleSystem.maxEmitBox = new BABYLON.Vector3(0, 0, 0); // To...
@@ -561,8 +589,8 @@ window.addEventListener('DOMContentLoaded', () => {
                 particleSystem.colorDead = new BABYLON.Color4(0, 0, 0, 0.0);
                 particleSystem.minSize = 0.1;
                 particleSystem.maxSize = 0.5;
-                particleSystem.minLifeTime = 0.3;
-                particleSystem.maxLifeTime = 0.4;
+                particleSystem.minLifeTime = 0.4;
+                particleSystem.maxLifeTime = 0.6;
                 particleSystem.emitRate = 2000;
                 particleSystem.blendMode = BABYLON.ParticleSystem.BLENDMODE_ONEONE;
                 particleSystem.gravity = new BABYLON.Vector3(0, 0, 0);
@@ -570,8 +598,8 @@ window.addEventListener('DOMContentLoaded', () => {
                 particleSystem.direction2 = new BABYLON.Vector3(1, 1, 1);
                 particleSystem.minAngularSpeed = 0;
                 particleSystem.maxAngularSpeed = Math.PI;
-                particleSystem.minEmitPower = 4;
-                particleSystem.maxEmitPower = 6;
+                particleSystem.minEmitPower = 6;
+                particleSystem.maxEmitPower = 10;
                 particleSystem.updateSpeed = 0.005;
                 this.explosionParticleSystem = particleSystem;
                 this.setSize(new BABYLON.Vector3(0.6658418, 0.8655933, 0.6658418));
@@ -770,6 +798,9 @@ window.addEventListener('DOMContentLoaded', () => {
             if (this.getCollisions(Sides.Bottom).size && this.getCollisions(Sides.Top).size) {
                 this.kill();
             }
+            this.bestHeight = Math.max(this.getPos().y, this.bestHeight);
+            text1.text = Math.round(this.getPos().y) + "ft";
+            text2.text = Math.round(this.bestHeight) + "ft";
         }
     }
     Player.moveSpeed = 0.1;

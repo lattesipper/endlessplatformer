@@ -16,6 +16,34 @@ scene.fogColor = new BABYLON.Color3(1, 0, 0);
 scene.clearColor = new BABYLON.Color4(1, 0, 0, 1.0);
 scene.ambientColor = new BABYLON.Color3(0.3, 0.3, 0.3);
 
+// GUI (to refactor into a class)
+const advancedTexture = BABYLON.GUI.AdvancedDynamicTexture.CreateFullscreenUI("UI");
+advancedTexture.idealWidth = 1080;
+const text1 = new BABYLON.GUI.TextBlock();
+text1.text = "50ft";
+text1.color = "black";
+text1.fontSize = 40;
+text1.horizontalAlignment = BABYLON.GUI.Control.HORIZONTAL_ALIGNMENT_RIGHT;
+text1.verticalAlignment = BABYLON.GUI.Control.VERTICAL_ALIGNMENT_TOP;
+text1.left = -25;
+text1.top = 25;
+text1.resizeToFit = true;
+text1.outlineWidth = 4;
+text1.outlineColor = 'white';
+advancedTexture.addControl(text1);  
+const text2 = new BABYLON.GUI.TextBlock();
+text2.text = "50ft";
+text2.color = "black";
+text2.fontSize = 30;
+text2.horizontalAlignment = BABYLON.GUI.Control.HORIZONTAL_ALIGNMENT_RIGHT;
+text2.verticalAlignment = BABYLON.GUI.Control.VERTICAL_ALIGNMENT_TOP;
+text2.left = -25;
+text2.top = 65;
+text2.resizeToFit = true;
+text2.outlineWidth = 4;
+text2.outlineColor = 'white';
+advancedTexture.addControl(text2);    
+
 
 // input manager (to refactor into a class)
 const inputMap : Map<string, boolean> = new Map(); 
@@ -577,8 +605,8 @@ class Player extends PhysBox {
             particleSystem.colorDead = new BABYLON.Color4(0, 0, 0, 0.0);
             particleSystem.minSize = 0.1;
             particleSystem.maxSize = 0.5;
-            particleSystem.minLifeTime = 0.3;
-            particleSystem.maxLifeTime = 0.4;
+            particleSystem.minLifeTime = 0.4;
+            particleSystem.maxLifeTime = 0.6;
             particleSystem.emitRate = 2000;
             particleSystem.blendMode = BABYLON.ParticleSystem.BLENDMODE_ONEONE;
             particleSystem.gravity = new BABYLON.Vector3(0, 0, 0);
@@ -586,8 +614,8 @@ class Player extends PhysBox {
             particleSystem.direction2 = new BABYLON.Vector3(1, 1, 1);
             particleSystem.minAngularSpeed = 0;
             particleSystem.maxAngularSpeed = Math.PI;
-            particleSystem.minEmitPower = 4;
-            particleSystem.maxEmitPower = 6;
+            particleSystem.minEmitPower = 6;
+            particleSystem.maxEmitPower = 10;
             particleSystem.updateSpeed = 0.005;
             this.explosionParticleSystem = particleSystem;
 
@@ -747,8 +775,13 @@ class Player extends PhysBox {
         if (this.getCollisions(Sides.Bottom).size && this.getCollisions(Sides.Top).size) {
             this.kill();
         }
+        this.bestHeight = Math.max(this.getPos().y, this.bestHeight);
+        text1.text = Math.round(this.getPos().y) + "ft";
+        text2.text = Math.round(this.bestHeight) + "ft";
     }
     private mesh: BABYLON.AbstractMesh;
+
+    private bestHeight: number = 0;
 
     private static moveSpeed = 0.1;
     private static airMoveAcceleration = 0.01;
