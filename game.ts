@@ -178,19 +178,23 @@ class Game {
         scene.onBeforeRenderObservable.add(() => {
             if (!this.running)
                 return;
-            this.lavaGround.position.y += 0.015;
+            if ((this.player.getPos().y - this.lavaGround.position.y) < Game.FAST_LAVA_SPEED_THRESHOLD) {
+                this.lavaGround.position.y += Game.DEFAULT_LAVA_SPEED;
+            } else {
+                this.lavaGround.position.y += Game.FAST_LAVA_SPEED;
+            }
             // update the sorted physbox list for sort&sweep collisions
             this.ySortBoxes();
             // resolve physbox collisions
-            this.physBoxes.forEach(pbox => pbox.beforeCollisions());
-            this.physBoxes.forEach(pbox => pbox.resolveCollisions(0));
-            this.physBoxes.forEach(pbox => pbox.afterCollisions());
+            this.physBoxes.forEach(pbox => { if (pbox.isActive()) pbox.beforeCollisions(); });
+            this.physBoxes.forEach(pbox => { if (pbox.isActive()) pbox.resolveCollisions(0); });
+            this.physBoxes.forEach(pbox => { if (pbox.isActive()) pbox.afterCollisions(); });
             // update fallbox clusters
             this.fallboxClusters.forEach(cluster => cluster.update());
         });
 
         // create lava
-        const lavaGround = BABYLON.Mesh.CreateGround("ground", 500, 500, 100, scene);
+        const lavaGround = BABYLON.Mesh.CreateGround("ground", 500, 500, 50, scene);
         lavaGround.visibility = 0.5;
         lavaGround.position.y = -10;
         const lavaMaterial = new BABYLON.LavaMaterial("lava", scene);	
@@ -203,11 +207,14 @@ class Game {
         this.lavaGround = lavaGround;
 
         // play background music
-        GameCamera.backgroundMusic = new BABYLON.Sound("", "https://raw.githubusercontent.com/lattesipper/endlessplatformer/master/resources/music/dreamsofabove.mp3", scene, null, {
+        Game.backgroundMusic = new BABYLON.Sound("", "https://raw.githubusercontent.com/lattesipper/endlessplatformer/master/resources/music/dreamsofabove.mp3", scene, null, {
             loop: true,
-            autoplay:  true,
+            autoplay:  false,//true,
             volume: 0.5
         });
+    }
+    public getLavaLevel() : number {
+        return this.lavaGround.position.y - 1;
     }
     public pause() { this.running = false; }
     public play() { this.running = true; }
@@ -278,6 +285,11 @@ class Game {
         // }
         return collisions;
     }
+    private static backgroundMusic: BABYLON.Sound;
+    private static FAST_LAVA_SPEED_THRESHOLD: number = 75;
+    private static DEFAULT_LAVA_SPEED: number = 0.0325;
+    private static FAST_LAVA_SPEED: number = 0.2;
+
     private running : boolean = true;                       // game running or paused?
     private fallboxClusters : Array<FallBoxCluster> = [];  
 
@@ -455,7 +467,6 @@ class PhysBox extends BoundBox {
             }
         }
     }
-    private backgroundMusic : BABYLON.Sound;
     private frozen: boolean = false;
     private active: boolean = true;
     private velocity: BABYLON.Vector3 = BABYLON.Vector3.Zero();
@@ -631,6 +642,7 @@ class Player extends PhysBox {
     public kill() {
         this.disable();
         this.explosionParticleSystem.start();
+        Player.sndDeath.play();
         setInterval(() => this.explosionParticleSystem.stop(), 150);
     }
     public static LoadResources() {
@@ -640,6 +652,11 @@ class Player extends PhysBox {
             volume: 0.5
         });
         Player.sndHitHead = new BABYLON.Sound("", "https://raw.githubusercontent.com/lattesipper/endlessplatformer/master/resources/sounds/hitHead.wav", scene, null, {
+            loop: false,
+            autoplay:  false,
+            volume: 0.5
+        });
+        Player.sndDeath = new BABYLON.Sound("", "https://raw.githubusercontent.com/lattesipper/endlessplatformer/master/resources/sounds/death.wav", scene, null, {
             loop: false,
             autoplay:  false,
             volume: 0.5
@@ -761,7 +778,7 @@ class Player extends PhysBox {
             } else {
                 this.getVelocity().x = (Math.abs(this.getVelocity().x) < Player.airMoveAcceleration) ? 0 : this.getVelocity().x + Player.airMoveAcceleration * Math.sign(this.getVelocity().x) * -1;
             }
-            if (isKeyPressed('control')) {
+            if (isKeyPressed('e')) {
                 this.getVelocity().y = -Player.crushImpulse;
             }
         }
@@ -772,9 +789,18 @@ class Player extends PhysBox {
     }
     public afterCollisions() {
         super.afterCollisions();
+
+        // Death conditions
+        //  1) Death due to being crushed
         if (this.getCollisions(Sides.Bottom).size && this.getCollisions(Sides.Top).size) {
             this.kill();
         }
+        //  2) Death due to falling in the lava
+        if (this.getSide(Sides.Bottom) <= game.getLavaLevel()) {
+            this.kill();
+        }
+
+        // Update GUI
         this.bestHeight = Math.max(this.getPos().y, this.bestHeight);
         text1.text = Math.round(this.getPos().y) + "ft";
         text2.text = Math.round(this.bestHeight) + "ft";
@@ -799,6 +825,7 @@ class Player extends PhysBox {
 
     private static sndJump: BABYLON.Sound;
     private static sndHitHead: BABYLON.Sound;
+    private static sndDeath: BABYLON.Sound;
     private explosionParticleSystem: BABYLON.ParticleSystem;
 }
 Player.LoadResources();
