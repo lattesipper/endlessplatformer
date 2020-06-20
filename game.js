@@ -13,8 +13,8 @@ window.addEventListener('DOMContentLoaded', () => {
     scene.clearColor = new BABYLON.Color4(1, 0, 0, 1.0);
     scene.ambientColor = new BABYLON.Color3(0.3, 0.3, 0.3);
     // GUI (to refactor into a class)
-    const advancedTexture = BABYLON.GUI.AdvancedDynamicTexture.CreateFullscreenUI("UI");
-    advancedTexture.idealWidth = 1080;
+    const gui = BABYLON.GUI.AdvancedDynamicTexture.CreateFullscreenUI("UI");
+    gui.idealWidth = 1080;
     const text1 = new BABYLON.GUI.TextBlock();
     text1.text = "50ft";
     text1.color = "black";
@@ -26,7 +26,7 @@ window.addEventListener('DOMContentLoaded', () => {
     text1.resizeToFit = true;
     text1.outlineWidth = 4;
     text1.outlineColor = 'white';
-    advancedTexture.addControl(text1);
+    gui.addControl(text1);
     const text2 = new BABYLON.GUI.TextBlock();
     text2.text = "50ft";
     text2.color = "black";
@@ -38,7 +38,11 @@ window.addEventListener('DOMContentLoaded', () => {
     text2.resizeToFit = true;
     text2.outlineWidth = 4;
     text2.outlineColor = 'white';
-    advancedTexture.addControl(text2);
+    gui.addControl(text2);
+    const image = new BABYLON.GUI.Image("but", "https://raw.githubusercontent.com/lattesipper/endlessplatformer/master/resources/images/mainmenu.png");
+    image.width = 1.0;
+    image.height = 1.0;
+    gui.addControl(image);
     // input manager (to refactor into a class)
     const inputMap = new Map();
     scene.actionManager = new BABYLON.ActionManager(scene);
@@ -276,7 +280,7 @@ window.addEventListener('DOMContentLoaded', () => {
         }
     }
     Game.FAST_LAVA_SPEED_THRESHOLD = 75;
-    Game.DEFAULT_LAVA_SPEED = 0.0325;
+    Game.DEFAULT_LAVA_SPEED = 0.035;
     Game.FAST_LAVA_SPEED = 0.2;
     const game = new Game();
     class GameObj extends Observable {
