@@ -22,6 +22,65 @@ let game;
 const gui = BABYLON.GUI.AdvancedDynamicTexture.CreateFullscreenUI("UI");
 gui.idealWidth = 1080;
 
+const loadingContainer = new BABYLON.GUI.Rectangle();
+loadingContainer.width = 1.0;
+loadingContainer.height = 1.0;
+loadingContainer.thickness = 0;
+loadingContainer.isVisible = true;
+loadingContainer.background = "rgb(0,0,0)";
+{
+    const loadingText = new BABYLON.GUI.TextBlock();
+    loadingText.text = "Loading";
+    loadingText.color = "white";
+    loadingText.fontSize = 100;
+    loadingContainer.addControl(loadingText);
+    let dotCount = 1;
+    setInterval(() => {
+        if (!loadingContainer.isVisible)
+            return;
+        dotCount = (dotCount + 1) % 4;
+        let dotStr = '';
+        for (let i = 0; i < dotCount; i++)
+            dotStr += '.';
+        loadingText.text = "Loading" + dotStr;
+    }, 500);
+}
+gui.addControl(loadingContainer);
+
+const gameOverContainer = new BABYLON.GUI.Rectangle();
+gameOverContainer.width = 1.0;
+gameOverContainer.height = 1.0;
+gameOverContainer.thickness = 0;
+gameOverContainer.isVisible = false;
+{
+    const bottomBar = new BABYLON.GUI.Rectangle();
+    bottomBar.width = 1.0;
+    bottomBar.height = 0.2;
+    bottomBar.thickness = 0;
+    bottomBar.background = "rgb(0,204,255)";
+    bottomBar.verticalAlignment = BABYLON.GUI.Control.VERTICAL_ALIGNMENT_BOTTOM;
+    gameOverContainer.addControl(bottomBar);
+
+    const btnMenu = BABYLON.GUI.Button.CreateSimpleButton("butb", "Menu");
+    btnMenu.horizontalAlignment = BABYLON.GUI.Control.HORIZONTAL_ALIGNMENT_RIGHT;
+    btnMenu.verticalAlignment = BABYLON.GUI.Control.VERTICAL_ALIGNMENT_BOTTOM;
+    btnMenu.width = "130px";
+    btnMenu.height = "60px";
+    btnMenu.fontSize = "50px";
+    btnMenu.color = "black";
+    btnMenu.thickness = 0;
+    btnMenu.onPointerClickObservable.add(() => {
+        game.dispose();
+        gameplayContainer.isVisible = false;
+        pauseContainer.isVisible = false;
+        menuContainer.isVisible = true;
+        gameOverContainer.isVisible = false;
+    });
+    gameOverContainer.addControl(btnMenu);
+
+}
+gui.addControl(gameOverContainer);
+
 const gameplayContainer = new BABYLON.GUI.Rectangle();
 gameplayContainer.width = 1.0;
 gameplayContainer.height = 1.0;
@@ -74,6 +133,7 @@ pauseContainer.isVisible = false;
         textPaused.text = "PAUSED";
         textPaused.color = "black";
         textPaused.fontSize = "60px";
+        textPaused.thickness = 0;
         centerBox.addControl(textPaused);
         const btnMenu = BABYLON.GUI.Button.CreateSimpleButton("but", "Menu");
         btnMenu.horizontalAlignment = BABYLON.GUI.Control.HORIZONTAL_ALIGNMENT_RIGHT;
@@ -83,12 +143,13 @@ pauseContainer.isVisible = false;
         btnMenu.height = "60px";
         btnMenu.fontSize = "50px";
         btnMenu.color = "black";
-        //btnMenu.thickness = 0;
+        btnMenu.thickness = 0;
         btnMenu.onPointerClickObservable.add(() => {
             game.dispose();
             gameplayContainer.isVisible = false;
             pauseContainer.isVisible = false;
             menuContainer.isVisible = true;
+            gameOverContainer.isVisible = false;
         });
         centerBox.addControl(btnMenu);
     }
@@ -101,6 +162,7 @@ menuContainer.width = 1.0;
 menuContainer.height = 1.0;
 menuContainer.background = "rgb(0,204,255)";
 menuContainer.thickness = 0;
+menuContainer.isVisible = false;
 {
     const backgroundImg = new BABYLON.GUI.Image("but", "https://raw.githubusercontent.com/lattesipper/endlessplatformer/master/resources/images/mainmenu.png");
     backgroundImg.width = 1.0;
@@ -117,13 +179,9 @@ menuContainer.thickness = 0;
     btnTutorial.height = "120px";
     btnTutorial.fontSize = "100px";
     btnTutorial.color = "red";
-    //btnTutorial.thickness = 0;
+    btnTutorial.thickness = 0;
     btnTutorial.onPointerClickObservable.add(() => {
-        game = new Game();
-        game.start();
-        menuContainer.isVisible = false;
-        gameplayContainer.isVisible = true;
-
+        alert("UNIMPLEMENTED");
     });
     menuContainer.addControl(btnTutorial);
     var btnPlay = BABYLON.GUI.Button.CreateSimpleButton("but", "Play");
@@ -135,7 +193,7 @@ menuContainer.thickness = 0;
     btnPlay.height = "120px";
     btnPlay.fontSize = "100px";
     btnPlay.color = "red";
-    //btnPlay.thickness = 0;
+    btnPlay.thickness = 0;
     btnPlay.onPointerClickObservable.add(() => {
         game = new Game();
         game.start();
@@ -197,29 +255,32 @@ window.addEventListener('resize', () => {
 
 // rotateable camera
 class GameCamera {
-    public static LoadResources() {
-        GameCamera.rotateSound = new BABYLON.Sound("", "https://raw.githubusercontent.com/lattesipper/endlessplatformer/master/resources/sounds/rotateView.wav", scene, null, {
-            loop: false,
-            autoplay:  false,
-            volume: 0.5
-        });
+    public static LoadResources() : Promise<any> {
+        return Promise.all([
+            new Promise((resolve) => {
+                GameCamera.rotateSound = new BABYLON.Sound("", "https://raw.githubusercontent.com/lattesipper/endlessplatformer/master/resources/sounds/rotateView.wav", scene, resolve, {
+                    loop: false,
+                    autoplay:  false,
+                    volume: 0.5
+                })
+            })
+        ]);
     }
-    public setFollower(follower: PhysBox) {
-        this.follower = follower;
-    }
+    public setY(y: number) { this.y = y; }
+    public getY() : number { return this.y; }
+    public setAlpha(alpha: number) { this.camera.alpha = alpha; }
+    public getAlpha() : number { return this.camera.alpha; }
     public constructor() {
         const camera = new BABYLON.ArcRotateCamera("Camera", 0, 0, 25, new BABYLON.Vector3(0, 0, 0), scene);
         camera.setPosition(new BABYLON.Vector3(0, 0, 0));
         camera.beta = 0.65;
-        camera.alpha = 4.71238898039;
         camera.radius = 25;
         camera.parent = this.node;
         this.camera = camera;
 
         scene.onBeforeRenderObservable.add(() => {
             // y-track the follower
-            if (this.follower)
-                this.node.position.y = this.follower.getPos().y;
+            this.node.position.y = this.y;
             // wrap camera alpha
             if (camera.alpha < 0) {
                 camera.alpha = (Math.PI * 2) + camera.alpha;
@@ -249,14 +310,17 @@ class GameCamera {
         });
     }
     public getRotationIndex() : number { return this.rotationIndex; }
+    public resetRotationindex() {
+        this.rotationIndex = 0;
+        this.camera.alpha = 4.71238898039;
+    }
     private static rotateSound: BABYLON.Sound;
     private camera: BABYLON.Camera;
-    private follower: PhysBox;
+    private y: number = 0;
     private rotating: boolean = false;
     private rotationIndex: number = 0;
     private node: BABYLON.TransformNode = new BABYLON.TransformNode('', scene);
 }
-GameCamera.LoadResources();
 const camera = new GameCamera();
 
 // sides enum class
@@ -285,75 +349,109 @@ class Sides {
     public direction : number;
 }
 
+enum GameMode {
+    Playing,
+    Spectating
+}
 class Game {
-    public static LoadResources() {
+    public static LoadResources() : Promise<any> {
         // load background music
-        Game.backgroundMusic = new BABYLON.Sound("", "https://raw.githubusercontent.com/lattesipper/endlessplatformer/master/resources/music/dreamsofabove.mp3", scene, null, {
-            loop: true,
-            autoplay:  false,
-            volume: 0.5
-        });
-        // load lava
-        const lavaGround = BABYLON.Mesh.CreateGround("ground", 500, 500, 50, scene);
-        lavaGround.visibility = 0.5;
-        lavaGround.position.y = -10;
-        const lavaMaterial = new BABYLON.LavaMaterial("lava", scene);	
-        lavaMaterial.noiseTexture = new BABYLON.Texture("https://www.babylonjs-playground.com/textures/lava/cloud.png", scene); // Set the bump texture
-        lavaMaterial.diffuseTexture = new BABYLON.Texture("https://www.babylonjs-playground.com/textures/lava/lavatile.jpg", scene); // Set the diffuse texture
-        lavaMaterial.speed = 0.5;
-        lavaMaterial.fogColor = new BABYLON.Color3(1, 0, 0);
-        lavaMaterial.unlit = true;
-        lavaGround.material = lavaMaterial;
-        lavaGround.isVisible = false;
-        Game.lavaTemplateMesh = lavaGround;
+        return Promise.all([
+            new Promise((resolve) => {
+                Game.backgroundMusic = new BABYLON.Sound("", "https://raw.githubusercontent.com/lattesipper/endlessplatformer/master/resources/music/dreamsofabove.mp3", scene, resolve, {
+                    loop: true,
+                    autoplay:  false,
+                    volume: 0.5
+                });
+            }),
+            new Promise((resolve) => {
+                const lavaGround = BABYLON.Mesh.CreateGround("ground", 500, 500, 50, scene);
+                lavaGround.visibility = 0.5;
+                lavaGround.position.y = -10;
+                const lavaMaterial = new BABYLON.LavaMaterial("lava", scene);	
+                lavaMaterial.noiseTexture = new BABYLON.Texture("https://www.babylonjs-playground.com/textures/lava/cloud.png", scene); // Set the bump texture
+                lavaMaterial.diffuseTexture = new BABYLON.Texture("https://www.babylonjs-playground.com/textures/lava/lavatile.jpg", scene); // Set the diffuse texture
+                lavaMaterial.speed = 0.5;
+                lavaMaterial.fogColor = new BABYLON.Color3(1, 0, 0);
+                lavaMaterial.unlit = true;
+                lavaGround.material = lavaMaterial;
+                lavaGround.isVisible = false;
+                Game.lavaTemplateMesh = lavaGround;
+                resolve();
+            })
+        ]);
     }
-    public constructor() {  
+    public constructor() { 
+        Game.backgroundMusic.play();
+        camera.resetRotationindex();
         this.updateCallbackFunc = (() => this.update());
         scene.onBeforeRenderObservable.add(this.updateCallbackFunc);
         this.lavaGround = Game.lavaTemplateMesh.createInstance('');
         this.callbackFunctions.push(
             InputManager.getInstance().onEvent('keyDown', (key) => {
-                switch(key) {
-                    case 'p':
-                        if (this.running) {
-                            pauseContainer.isVisible = true;
-                            this.running = false;
-                        } else {
-                            pauseContainer.isVisible = false;
-                            this.running = true;
-                        }
-                        break;
+                if (this.canPause) {
+                    switch(key) {
+                        case 'p':
+                            if (this.running) {
+                                pauseContainer.isVisible = true;
+                                this.running = false;
+                            } else {
+                                pauseContainer.isVisible = false;
+                                this.running = true;
+                            }
+                            break;
+                    }
                 }
             })
         );
     }
+    public beginSpactorMode() {
+        setTimeout(() => {
+            this.mode = GameMode.Spectating;
+            this.lavaGround.position.y = -10;
+            this.deathDelayOver = true;
+            gameplayContainer.isVisible = false;
+            gameOverContainer.isVisible = true;
+            camera.setY(0);
+            this.canPause = false;
+        }, 3000);
+    }
     private update() {
         if (!this.running)
             return;
-        if ((this.player.getPos().y - this.lavaGround.position.y) < Game.FAST_LAVA_SPEED_THRESHOLD) {
-            this.lavaGround.position.y += Game.DEFAULT_LAVA_SPEED;
-        } else {
-            this.lavaGround.position.y += Game.FAST_LAVA_SPEED;
+        switch(this.mode) {
+            case GameMode.Playing:
+                if ((this.player.getPos().y - this.lavaGround.position.y) < Game.FAST_LAVA_SPEED_THRESHOLD) {
+                    this.lavaGround.position.y += Game.DEFAULT_LAVA_SPEED;
+                } else {
+                    this.lavaGround.position.y += Game.FAST_LAVA_SPEED;
+                }
+                // update the sorted physbox list for sort&sweep collisions
+                this.ySortBoxes();
+                // resolve physbox collisions
+                this.physBoxes.forEach(pbox => { if (pbox.isActive() && !pbox.isDisposed()) pbox.beforeCollisions(); });
+                this.physBoxes.forEach(pbox => { if (pbox.isActive() && !pbox.isDisposed()) pbox.resolveCollisions(0); });
+                this.physBoxes.forEach(pbox => { if (pbox.isActive() && !pbox.isDisposed()) pbox.afterCollisions(); });
+                // update fallbox clusters
+                this.fallboxClusters.forEach(cluster => { if (!cluster.isDisposed()) cluster.update(); });
+                break;
+            case GameMode.Spectating:
+                if (this.deathDelayOver) {
+                    camera.setY(camera.getY() + 0.1);
+                    camera.setAlpha(camera.getAlpha() + 0.01);
+                }
+                break;
         }
-        // update the sorted physbox list for sort&sweep collisions
-        this.ySortBoxes();
-        // resolve physbox collisions
-        this.physBoxes.forEach(pbox => { if (pbox.isActive() && !pbox.isDisposed()) pbox.beforeCollisions(); });
-        this.physBoxes.forEach(pbox => { if (pbox.isActive() && !pbox.isDisposed()) pbox.resolveCollisions(0); });
-        this.physBoxes.forEach(pbox => { if (pbox.isActive() && !pbox.isDisposed()) pbox.afterCollisions(); });
-        // update fallbox clusters
-        this.fallboxClusters.forEach(cluster => { if (!cluster.isDisposed()) cluster.update(); });
     }
     public dispose() {
-        scene.onBeforeRenderObservable.remove(this.updateCallbackFunc);
+        Game.backgroundMusic.stop();
+        scene.onBeforeRenderObservable.removeCallback(this.updateCallbackFunc);
         this.physBoxes.forEach((physBox) => physBox.dispose());
         this.fallboxClusters.forEach((cluster) => cluster.dispose());
         this.lavaGround.dispose();
         this.callbackFunctions.forEach((func) => func());
     }
-    public getLavaLevel() : number {
-        return this.lavaGround.position.y - 1;
-    }
+    public getLavaLevel() : number { return this.lavaGround.position.y - 1; }
     public pause() { this.running = false; }
     public play() { this.running = true; }
     public start() {
@@ -429,6 +527,10 @@ class Game {
     private static DEFAULT_LAVA_SPEED: number = 0.035;
     private static FAST_LAVA_SPEED: number = 0.2;
 
+    private mode: GameMode = GameMode.Playing;
+    private deathDelayOver: boolean = false;
+    private canPause: boolean = true;
+
     private updateCallbackFunc;
     private callbackFunctions : Array<CallableFunction> = [];
 
@@ -442,8 +544,6 @@ class Game {
     private player: Player;                                 // the player
     private lavaGround: BABYLON.TransformNode;              // the lava
 }
-Game.LoadResources();
-
 
 class GameObj extends Observable {}
 class BoundBox extends GameObj {
@@ -750,30 +850,41 @@ class FallBox extends PhysBox {
 }
 
 class Player extends PhysBox {
-    public static LoadResources() {
-        Player.sndJump = new BABYLON.Sound("", "https://raw.githubusercontent.com/lattesipper/endlessplatformer/master/resources/sounds/jump.wav", scene, null, {
-            loop: false,
-            autoplay:  false,
-            volume: 0.5
-        });
-        Player.sndHitHead = new BABYLON.Sound("", "https://raw.githubusercontent.com/lattesipper/endlessplatformer/master/resources/sounds/hitHead.wav", scene, null, {
-            loop: false,
-            autoplay:  false,
-            volume: 0.5
-        });
-        Player.sndDeath = new BABYLON.Sound("", "https://raw.githubusercontent.com/lattesipper/endlessplatformer/master/resources/sounds/death.wav", scene, null, {
-            loop: false,
-            autoplay:  false,
-            volume: 0.5
-        });
-        BABYLON.SceneLoader.ImportMesh("", "https://raw.githubusercontent.com/lattesipper/endlessplatformer/master/resources/meshes/", "player.obj", scene, (meshes, particleSystems, skeletons) => {
-            const testMaterial = new BABYLON.StandardMaterial('', scene);
-            testMaterial.diffuseTexture = new BABYLON.Texture('https://raw.githubusercontent.com/lattesipper/endlessplatformer/master/resources/meshes/player.png', scene);
-            testMaterial.ambientColor = new BABYLON.Color3(1, 1, 1);
-            meshes[0].material = testMaterial;
-            meshes[0].isVisible = false;
-            Player.templateMesh = <BABYLON.Mesh>(meshes[0]);
-        });
+    public static LoadResources() : Promise<any> {
+        return Promise.all([
+            new Promise((resolve) => {
+                Player.sndJump = new BABYLON.Sound("", "https://raw.githubusercontent.com/lattesipper/endlessplatformer/master/resources/sounds/jump.wav", scene, resolve, {
+                    loop: false,
+                    autoplay:  false,
+                    volume: 0.5
+                });
+            }),
+            new Promise((resolve) => {
+                Player.sndHitHead = new BABYLON.Sound("", "https://raw.githubusercontent.com/lattesipper/endlessplatformer/master/resources/sounds/hitHead.wav", scene, resolve, {
+                    loop: false,
+                    autoplay:  false,
+                    volume: 0.5
+                });
+            }),
+            new Promise((resolve) => {
+                Player.sndDeath = new BABYLON.Sound("", "https://raw.githubusercontent.com/lattesipper/endlessplatformer/master/resources/sounds/death.wav", scene, resolve, {
+                    loop: false,
+                    autoplay:  false,
+                    volume: 0.5
+                });
+            }),
+            new Promise((resolve) => {
+                BABYLON.SceneLoader.ImportMesh("", "https://raw.githubusercontent.com/lattesipper/endlessplatformer/master/resources/meshes/", "player.obj", scene, (meshes, particleSystems, skeletons) => {
+                    const testMaterial = new BABYLON.StandardMaterial('', scene);
+                    testMaterial.diffuseTexture = new BABYLON.Texture('https://raw.githubusercontent.com/lattesipper/endlessplatformer/master/resources/meshes/player.png', scene);
+                    testMaterial.ambientColor = new BABYLON.Color3(1, 1, 1);
+                    meshes[0].material = testMaterial;
+                    meshes[0].isVisible = false;
+                    Player.templateMesh = <BABYLON.Mesh>(meshes[0]);
+                    resolve();
+                });
+            })
+        ]);
     }
     public dispose() {
         super.dispose();
@@ -812,7 +923,6 @@ class Player extends PhysBox {
 
         this.setSize(new BABYLON.Vector3(0.6658418, 0.8655933, 0.6658418));
         this.setPos(new BABYLON.Vector3(0, 3, 0));
-        camera.setFollower(this);  
     }
     public disable() {
         super.disable();
@@ -822,7 +932,8 @@ class Player extends PhysBox {
         this.disable();
         this.explosionParticleSystem.start();
         Player.sndDeath.play();
-        setInterval(() => this.explosionParticleSystem.stop(), 150);
+        game.beginSpactorMode();
+        setTimeout(() => this.explosionParticleSystem.stop(), 150);
     }
     public onCollisionStart(side: Sides, physBox: PhysBox) { 
         if (!Player.sndHitHead.isPlaying && side == Sides.Top && physBox instanceof FallBox)
@@ -952,6 +1063,8 @@ class Player extends PhysBox {
     public afterCollisions() {
         super.afterCollisions();
 
+        camera.setY(this.getPos().y);
+
         // Death conditions
         //  1) Death due to being crushed
         if (this.getCollisions(Sides.Bottom).size && this.getCollisions(Sides.Top).size) {
@@ -991,5 +1104,14 @@ class Player extends PhysBox {
     private static templateMesh: BABYLON.Mesh;
     private explosionParticleSystem: BABYLON.ParticleSystem;
 }
-Player.LoadResources();
+
+Promise.all([
+    Game.LoadResources(),
+    Player.LoadResources(),
+    GameCamera.LoadResources()
+]).then(() => {
+    loadingContainer.isVisible = false;
+    menuContainer.isVisible = true;
+});
+
 });
