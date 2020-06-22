@@ -62,18 +62,19 @@ const pauseContainer = new BABYLON.GUI.Rectangle();
 pauseContainer.width = 1.0;
 pauseContainer.height = 1.0;
 pauseContainer.thickness = 0;
+pauseContainer.isVisible = false;
 {
-    const gameplayContainer = new BABYLON.GUI.Rectangle();
-    gameplayContainer.width = 0.5
-    gameplayContainer.height = 0.5;
-    gameplayContainer.thickness = 0;
-    gameplayContainer.background = "rgba(255,255,255,0.5)";
+    const centerBox = new BABYLON.GUI.Rectangle();
+    centerBox.width = 0.5
+    centerBox.height = 0.5;
+    centerBox.thickness = 0;
+    centerBox.background = "rgba(255,255,255,0.5)";
     {
         const textPaused = new BABYLON.GUI.TextBlock();
         textPaused.text = "PAUSED";
         textPaused.color = "black";
         textPaused.fontSize = "60px";
-        gameplayContainer.addControl(textPaused);
+        centerBox.addControl(textPaused);
         const btnMenu = BABYLON.GUI.Button.CreateSimpleButton("but", "Menu");
         btnMenu.horizontalAlignment = BABYLON.GUI.Control.HORIZONTAL_ALIGNMENT_RIGHT;
         btnMenu.verticalAlignment = BABYLON.GUI.Control.VERTICAL_ALIGNMENT_BOTTOM;
@@ -89,9 +90,9 @@ pauseContainer.thickness = 0;
             pauseContainer.isVisible = false;
             menuContainer.isVisible = true;
         });
-        gameplayContainer.addControl(btnMenu);
+        centerBox.addControl(btnMenu);
     }
-    pauseContainer.addControl(gameplayContainer);
+    pauseContainer.addControl(centerBox);
 }
 gui.addControl(pauseContainer);
 
@@ -147,32 +148,9 @@ menuContainer.thickness = 0;
 gui.addControl(menuContainer);
 
 
-// input manager (to refactor into a class)
-const inputMap : Map<string, boolean> = new Map(); 
-scene.actionManager = new BABYLON.ActionManager(scene);
-scene.actionManager.registerAction(new BABYLON.ExecuteCodeAction(BABYLON.ActionManager.OnKeyDownTrigger, function (evt) {
-    const key = evt.sourceEvent.key.toLowerCase();
-    inputMap.set(key, true);
-}));
-scene.actionManager.registerAction(new BABYLON.ExecuteCodeAction(BABYLON.ActionManager.OnKeyUpTrigger, function (evt) {
-    const key = evt.sourceEvent.key.toLowerCase();
-    inputMap.set(key, false);
-}));
-const isKeyPressed = (key) => {
-    return inputMap.get(key);
-};
-
-// Run the render loop.
-engine.runRenderLoop(() => {
-    scene.render();
-});
-window.addEventListener('resize', () => {
-    engine.resize();
-});
-
 // observable object that fires events
 class Observable {
-    public onEvent(eventName, callback) {
+    public onEvent(eventName, callback) : CallableFunction {
         if (!this.subscribers.has(eventName))
             this.subscribers.set(eventName, new Set());
         this.subscribers.get(eventName).add(callback);
@@ -184,6 +162,38 @@ class Observable {
     }
     private subscribers : Map<string, Set<CallableFunction>> = new Map();
 }
+
+class InputManager extends Observable {
+    private constructor() {
+        super();
+        this.inputMap = new Map(); 
+        scene.actionManager = new BABYLON.ActionManager(scene);
+        scene.actionManager.registerAction(new BABYLON.ExecuteCodeAction(BABYLON.ActionManager.OnKeyDownTrigger, (evt) => {
+            const key = evt.sourceEvent.key.toLowerCase();
+            this.inputMap.set(key, true);
+            this.fire('keyDown', key);
+        }));
+        scene.actionManager.registerAction(new BABYLON.ExecuteCodeAction(BABYLON.ActionManager.OnKeyUpTrigger, (evt) => {
+            const key = evt.sourceEvent.key.toLowerCase();
+            this.inputMap.set(key, false);
+            this.fire('keyUp', key);
+        }));
+    }
+    public static getInstance() : InputManager { return this.instance; }
+    public isKeyPressed(key) {
+        return this.inputMap.get(key);
+    };
+    private inputMap: Map<string, boolean>;
+    private static instance: InputManager = new InputManager();
+}
+// Run the render loop.
+engine.runRenderLoop(() => {
+    scene.render();
+});
+window.addEventListener('resize', () => {
+    engine.resize();
+});
+
 
 // rotateable camera
 class GameCamera {
@@ -217,7 +227,7 @@ class GameCamera {
                 camera.alpha = camera.alpha - (Math.PI * 2);
             }
             // rotate camera right 90 degrees
-            if (isKeyPressed('arrowright') && !this.rotating) {
+            if (InputManager.getInstance().isKeyPressed('arrowright') && !this.rotating) {
                 var animationBox : BABYLON.Animation = new BABYLON.Animation("myAnimation", "alpha", 60, BABYLON.Animation.ANIMATIONTYPE_FLOAT, BABYLON.Animation.ANIMATIONLOOPMODE_CONSTANT);
                 animationBox.setKeys([ { frame: 0, value: camera.alpha }, { frame: 20, value: camera.alpha + (Math.PI / 2) } ]);
                 camera.animations = [animationBox];
@@ -227,7 +237,7 @@ class GameCamera {
                 GameCamera.rotateSound.play();
             } 
             // rotate camera left 90 degrees
-            else if (isKeyPressed('arrowleft') && !this.rotating) {
+            else if (InputManager.getInstance().isKeyPressed('arrowleft') && !this.rotating) {
                 var animationBox = new BABYLON.Animation("myAnimation2", "alpha", 60, BABYLON.Animation.ANIMATIONTYPE_FLOAT, BABYLON.Animation.ANIMATIONLOOPMODE_CONSTANT);
                 animationBox.setKeys( [ { frame: 0, value: camera.alpha },  { frame: 20, value: camera.alpha - (Math.PI / 2) }]);
                 camera.animations = [animationBox];
@@ -301,6 +311,21 @@ class Game {
         this.updateCallbackFunc = (() => this.update());
         scene.onBeforeRenderObservable.add(this.updateCallbackFunc);
         this.lavaGround = Game.lavaTemplateMesh.createInstance('');
+        this.callbackFunctions.push(
+            InputManager.getInstance().onEvent('keyDown', (key) => {
+                switch(key) {
+                    case 'p':
+                        if (this.running) {
+                            pauseContainer.isVisible = true;
+                            this.running = false;
+                        } else {
+                            pauseContainer.isVisible = false;
+                            this.running = true;
+                        }
+                        break;
+                }
+            })
+        );
     }
     private update() {
         if (!this.running)
@@ -324,6 +349,7 @@ class Game {
         this.physBoxes.forEach((physBox) => physBox.dispose());
         this.fallboxClusters.forEach((cluster) => cluster.dispose());
         this.lavaGround.dispose();
+        this.callbackFunctions.forEach((func) => func());
     }
     public getLavaLevel() : number {
         return this.lavaGround.position.y - 1;
@@ -404,6 +430,7 @@ class Game {
     private static FAST_LAVA_SPEED: number = 0.2;
 
     private updateCallbackFunc;
+    private callbackFunctions : Array<CallableFunction> = [];
 
     private running : boolean = true;                       // game running or paused?
     private fallboxClusters : Array<FallBoxCluster> = [];  
@@ -836,7 +863,7 @@ class Player extends PhysBox {
             if (this.getCollisions(Sides.Left).size) {
                 count += this.getCollisions(Sides.Left).size;
                 this.getCollisions(Sides.Left).forEach((physBox) => avgYSpeed += physBox.getVelocity().y);
-                if (isKeyPressed(' ')) {
+                if (InputManager.getInstance().isKeyPressed(' ')) {
                     this.getVelocity().x = Player.sideXZImpulse; this.getVelocity().y = Player.sideJumpImpulse;
                     if (!Player.sndHitHead.isPlaying) Player.sndJump.play();
                 }
@@ -844,7 +871,7 @@ class Player extends PhysBox {
             if (this.getCollisions(Sides.Right).size) {
                 count += this.getCollisions(Sides.Right).size;
                 this.getCollisions(Sides.Right).forEach((physBox) => avgYSpeed += physBox.getVelocity().y);
-                if (isKeyPressed(' ')) {
+                if (InputManager.getInstance().isKeyPressed(' ')) {
                     this.getVelocity().x = -Player.sideXZImpulse; this.getVelocity().y = Player.sideJumpImpulse;
                     if (!Player.sndHitHead.isPlaying) Player.sndJump.play();
                 }
@@ -852,7 +879,7 @@ class Player extends PhysBox {
             if (this.getCollisions(Sides.Forward).size) {
                 count += this.getCollisions(Sides.Forward).size;
                 this.getCollisions(Sides.Forward).forEach((physBox) => avgYSpeed += physBox.getVelocity().y);
-                if (isKeyPressed(' ')) {
+                if (InputManager.getInstance().isKeyPressed(' ')) {
                     this.getVelocity().z = -Player.sideXZImpulse; this.getVelocity().y = Player.sideJumpImpulse;
                     if (!Player.sndHitHead.isPlaying) Player.sndJump.play();
                 }
@@ -860,13 +887,13 @@ class Player extends PhysBox {
             if (this.getCollisions(Sides.Back).size) {
                 count += this.getCollisions(Sides.Back).size;
                 this.getCollisions(Sides.Back).forEach((physBox) => avgYSpeed += physBox.getVelocity().y);
-                if (isKeyPressed(' ')) {
+                if (InputManager.getInstance().isKeyPressed(' ')) {
                     this.getVelocity().z = Player.sideXZImpulse; this.getVelocity().y = Player.sideJumpImpulse;
                     if (!Player.sndHitHead.isPlaying) Player.sndJump.play();
                 }
             }
         }
-        if (count && !isKeyPressed(' ')) {
+        if (count && !InputManager.getInstance().isKeyPressed(' ')) {
             // sliding, set players velocity to slide speed
             avgYSpeed /= count;
             avgYSpeed -= Player.sideSlideSpeed;
@@ -878,42 +905,42 @@ class Player extends PhysBox {
 
         // grounded, apply movement velocity instantaneously
         if (this.getCollisions(Sides.Bottom).size) {
-            if (isKeyPressed(wKey)) {
+            if (InputManager.getInstance().isKeyPressed(wKey)) {
                 this.getVelocity().z = Player.moveSpeed;
-            } else if (isKeyPressed(sKey)) {
+            } else if (InputManager.getInstance().isKeyPressed(sKey)) {
                 this.getVelocity().z = -Player.moveSpeed;
             } else {
                 this.getVelocity().z = 0;
             }
-            if (isKeyPressed(aKey)) {
+            if (InputManager.getInstance().isKeyPressed(aKey)) {
                 this.getVelocity().x = -Player.moveSpeed;
-            } else if (isKeyPressed(dKey)) {
+            } else if (InputManager.getInstance().isKeyPressed(dKey)) {
                 this.getVelocity().x = Player.moveSpeed;
             } else {
                 this.getVelocity().x = 0;
             }
-            if (isKeyPressed(' ')) {
+            if (InputManager.getInstance().isKeyPressed(' ')) {
                 if (!Player.sndHitHead.isPlaying) Player.sndJump.play();
                 this.getVelocity().y = Player.jumpImpulse;
             }    
         } 
         // in-air, apply movement velocity through acceleration
         else {
-            if (isKeyPressed(wKey)) {
+            if (InputManager.getInstance().isKeyPressed(wKey)) {
                 this.getVelocity().z = Math.min(this.getVelocity().z + Player.airMoveAcceleration, Player.moveSpeed);
-            } else if (isKeyPressed(sKey)) {
+            } else if (InputManager.getInstance().isKeyPressed(sKey)) {
                 this.getVelocity().z = Math.max(this.getVelocity().z - Player.airMoveAcceleration, -Player.moveSpeed);
             } else {
                 this.getVelocity().z = (Math.abs(this.getVelocity().z) < Player.airMoveAcceleration) ? 0 : this.getVelocity().z + Player.airMoveAcceleration * Math.sign(this.getVelocity().z) * -1;
             }
-            if (isKeyPressed(aKey)) {
+            if (InputManager.getInstance().isKeyPressed(aKey)) {
                 this.getVelocity().x = Math.max(this.getVelocity().x - Player.airMoveAcceleration, -Player.moveSpeed);
-            } else if (isKeyPressed(dKey)) {
+            } else if (InputManager.getInstance().isKeyPressed(dKey)) {
                 this.getVelocity().x = Math.min(this.getVelocity().x + Player.airMoveAcceleration, Player.moveSpeed);
             } else {
                 this.getVelocity().x = (Math.abs(this.getVelocity().x) < Player.airMoveAcceleration) ? 0 : this.getVelocity().x + Player.airMoveAcceleration * Math.sign(this.getVelocity().x) * -1;
             }
-            if (isKeyPressed('e')) {
+            if (InputManager.getInstance().isKeyPressed('e')) {
                 this.getVelocity().y = -Player.crushImpulse;
             }
         }
@@ -937,8 +964,8 @@ class Player extends PhysBox {
 
         // Update GUI
         this.bestHeight = Math.max(this.getPos().y, this.bestHeight);
-        gameplayContainer.getChildByName('currentheight').text = Math.round(this.getPos().y) + "ft";
-        gameplayContainer.getChildByName('maxheight').text = Math.round(this.bestHeight) + "ft";
+        // gameplayContainer.getChildByName('currentheight').text = Math.round(this.getPos().y) + "ft";
+        // gameplayContainer.getChildByName('maxheight').text = Math.round(this.bestHeight) + "ft";
     }
     private mesh: BABYLON.AbstractMesh;
 
