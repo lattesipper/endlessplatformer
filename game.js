@@ -12,37 +12,127 @@ window.addEventListener('DOMContentLoaded', () => {
     scene.fogColor = new BABYLON.Color3(1, 0, 0);
     scene.clearColor = new BABYLON.Color4(1, 0, 0, 1.0);
     scene.ambientColor = new BABYLON.Color3(0.3, 0.3, 0.3);
+    let game;
     // GUI (to refactor into a class)
     const gui = BABYLON.GUI.AdvancedDynamicTexture.CreateFullscreenUI("UI");
     gui.idealWidth = 1080;
-    const text1 = new BABYLON.GUI.TextBlock();
-    text1.text = "50ft";
-    text1.color = "black";
-    text1.fontSize = 40;
-    text1.horizontalAlignment = BABYLON.GUI.Control.HORIZONTAL_ALIGNMENT_RIGHT;
-    text1.verticalAlignment = BABYLON.GUI.Control.VERTICAL_ALIGNMENT_TOP;
-    text1.left = -25;
-    text1.top = 25;
-    text1.resizeToFit = true;
-    text1.outlineWidth = 4;
-    text1.outlineColor = 'white';
-    gui.addControl(text1);
-    const text2 = new BABYLON.GUI.TextBlock();
-    text2.text = "50ft";
-    text2.color = "black";
-    text2.fontSize = 30;
-    text2.horizontalAlignment = BABYLON.GUI.Control.HORIZONTAL_ALIGNMENT_RIGHT;
-    text2.verticalAlignment = BABYLON.GUI.Control.VERTICAL_ALIGNMENT_TOP;
-    text2.left = -25;
-    text2.top = 65;
-    text2.resizeToFit = true;
-    text2.outlineWidth = 4;
-    text2.outlineColor = 'white';
-    gui.addControl(text2);
-    const image = new BABYLON.GUI.Image("but", "https://raw.githubusercontent.com/lattesipper/endlessplatformer/master/resources/images/mainmenu.png");
-    image.width = 1.0;
-    image.height = 1.0;
-    gui.addControl(image);
+    const gameplayContainer = new BABYLON.GUI.Rectangle();
+    gameplayContainer.width = 1.0;
+    gameplayContainer.height = 1.0;
+    gameplayContainer.thickness = 0;
+    gameplayContainer.isVisible = false;
+    {
+        const text1 = new BABYLON.GUI.TextBlock();
+        text1.text = "50ft";
+        text1.color = "black";
+        text1.fontSize = 40;
+        text1.horizontalAlignment = BABYLON.GUI.Control.HORIZONTAL_ALIGNMENT_RIGHT;
+        text1.verticalAlignment = BABYLON.GUI.Control.VERTICAL_ALIGNMENT_TOP;
+        text1.left = -25;
+        text1.top = 25;
+        text1.resizeToFit = true;
+        text1.outlineWidth = 4;
+        text1.outlineColor = 'white';
+        text1.name = 'currentheight';
+        gameplayContainer.addControl(text1);
+        const text2 = new BABYLON.GUI.TextBlock();
+        text2.text = "50ft";
+        text2.color = "black";
+        text2.fontSize = 30;
+        text2.horizontalAlignment = BABYLON.GUI.Control.HORIZONTAL_ALIGNMENT_RIGHT;
+        text2.verticalAlignment = BABYLON.GUI.Control.VERTICAL_ALIGNMENT_TOP;
+        text2.left = -25;
+        text2.top = 65;
+        text2.resizeToFit = true;
+        text2.outlineWidth = 4;
+        text2.outlineColor = 'white';
+        text2.name = 'maxheight';
+        gameplayContainer.addControl(text2);
+    }
+    gui.addControl(gameplayContainer);
+    const pauseContainer = new BABYLON.GUI.Rectangle();
+    pauseContainer.width = 1.0;
+    pauseContainer.height = 1.0;
+    pauseContainer.thickness = 0;
+    {
+        const gameplayContainer = new BABYLON.GUI.Rectangle();
+        gameplayContainer.width = 0.5;
+        gameplayContainer.height = 0.5;
+        gameplayContainer.thickness = 0;
+        gameplayContainer.background = "rgba(255,255,255,0.5)";
+        {
+            const textPaused = new BABYLON.GUI.TextBlock();
+            textPaused.text = "PAUSED";
+            textPaused.color = "black";
+            textPaused.fontSize = "60px";
+            gameplayContainer.addControl(textPaused);
+            const btnMenu = BABYLON.GUI.Button.CreateSimpleButton("but", "Menu");
+            btnMenu.horizontalAlignment = BABYLON.GUI.Control.HORIZONTAL_ALIGNMENT_RIGHT;
+            btnMenu.verticalAlignment = BABYLON.GUI.Control.VERTICAL_ALIGNMENT_BOTTOM;
+            btnMenu.left = 0.5;
+            btnMenu.width = "130px";
+            btnMenu.height = "60px";
+            btnMenu.fontSize = "50px";
+            btnMenu.color = "black";
+            //btnMenu.thickness = 0;
+            btnMenu.onPointerClickObservable.add(() => {
+                game.dispose();
+                gameplayContainer.isVisible = false;
+                pauseContainer.isVisible = false;
+                menuContainer.isVisible = true;
+            });
+            gameplayContainer.addControl(btnMenu);
+        }
+        pauseContainer.addControl(gameplayContainer);
+    }
+    gui.addControl(pauseContainer);
+    const menuContainer = new BABYLON.GUI.Rectangle();
+    menuContainer.width = 1.0;
+    menuContainer.height = 1.0;
+    menuContainer.background = "rgb(0,204,255)";
+    menuContainer.thickness = 0;
+    {
+        const backgroundImg = new BABYLON.GUI.Image("but", "https://raw.githubusercontent.com/lattesipper/endlessplatformer/master/resources/images/mainmenu.png");
+        backgroundImg.width = 1.0;
+        backgroundImg.height = 1.0;
+        backgroundImg.stretch = BABYLON.GUI.Image.STRETCH_UNIFORM;
+        menuContainer.addControl(backgroundImg);
+        var btnTutorial = BABYLON.GUI.Button.CreateSimpleButton("but", "Tutorial");
+        btnTutorial.horizontalAlignment = BABYLON.GUI.Control.HORIZONTAL_ALIGNMENT_LEFT;
+        btnTutorial.verticalAlignment = BABYLON.GUI.Control.VERTICAL_ALIGNMENT_TOP;
+        btnTutorial.left = "150px";
+        btnTutorial.top = "50px";
+        btnTutorial.width = "360px";
+        btnTutorial.height = "120px";
+        btnTutorial.fontSize = "100px";
+        btnTutorial.color = "red";
+        //btnTutorial.thickness = 0;
+        btnTutorial.onPointerClickObservable.add(() => {
+            game = new Game();
+            game.start();
+            menuContainer.isVisible = false;
+            gameplayContainer.isVisible = true;
+        });
+        menuContainer.addControl(btnTutorial);
+        var btnPlay = BABYLON.GUI.Button.CreateSimpleButton("but", "Play");
+        btnPlay.horizontalAlignment = BABYLON.GUI.Control.HORIZONTAL_ALIGNMENT_LEFT;
+        btnPlay.verticalAlignment = BABYLON.GUI.Control.VERTICAL_ALIGNMENT_TOP;
+        btnPlay.left = "150px";
+        btnPlay.top = "170px";
+        btnPlay.width = "230px";
+        btnPlay.height = "120px";
+        btnPlay.fontSize = "100px";
+        btnPlay.color = "red";
+        //btnPlay.thickness = 0;
+        btnPlay.onPointerClickObservable.add(() => {
+            game = new Game();
+            game.start();
+            menuContainer.isVisible = false;
+            gameplayContainer.isVisible = true;
+        });
+        menuContainer.addControl(btnPlay);
+    }
+    gui.addControl(menuContainer);
     // input manager (to refactor into a class)
     const inputMap = new Map();
     scene.actionManager = new BABYLON.ActionManager(scene);
@@ -169,28 +259,18 @@ window.addEventListener('DOMContentLoaded', () => {
             this.physBoxesY = []; // sorted list of physboxes
             this.physBoxes = []; // unsorted list of physboxes
             this.yIndexes = new Map(); // physbox -> sorted Y index    
-            scene.onBeforeRenderObservable.add(() => {
-                if (!this.running)
-                    return;
-                if ((this.player.getPos().y - this.lavaGround.position.y) < Game.FAST_LAVA_SPEED_THRESHOLD) {
-                    this.lavaGround.position.y += Game.DEFAULT_LAVA_SPEED;
-                }
-                else {
-                    this.lavaGround.position.y += Game.FAST_LAVA_SPEED;
-                }
-                // update the sorted physbox list for sort&sweep collisions
-                this.ySortBoxes();
-                // resolve physbox collisions
-                this.physBoxes.forEach(pbox => { if (pbox.isActive())
-                    pbox.beforeCollisions(); });
-                this.physBoxes.forEach(pbox => { if (pbox.isActive())
-                    pbox.resolveCollisions(0); });
-                this.physBoxes.forEach(pbox => { if (pbox.isActive())
-                    pbox.afterCollisions(); });
-                // update fallbox clusters
-                this.fallboxClusters.forEach(cluster => cluster.update());
+            this.updateCallbackFunc = (() => this.update());
+            scene.onBeforeRenderObservable.add(this.updateCallbackFunc);
+            this.lavaGround = Game.lavaTemplateMesh.createInstance('');
+        }
+        static LoadResources() {
+            // load background music
+            Game.backgroundMusic = new BABYLON.Sound("", "https://raw.githubusercontent.com/lattesipper/endlessplatformer/master/resources/music/dreamsofabove.mp3", scene, null, {
+                loop: true,
+                autoplay: false,
+                volume: 0.5
             });
-            // create lava
+            // load lava
             const lavaGround = BABYLON.Mesh.CreateGround("ground", 500, 500, 50, scene);
             lavaGround.visibility = 0.5;
             lavaGround.position.y = -10;
@@ -201,13 +281,36 @@ window.addEventListener('DOMContentLoaded', () => {
             lavaMaterial.fogColor = new BABYLON.Color3(1, 0, 0);
             lavaMaterial.unlit = true;
             lavaGround.material = lavaMaterial;
-            this.lavaGround = lavaGround;
-            // play background music
-            Game.backgroundMusic = new BABYLON.Sound("", "https://raw.githubusercontent.com/lattesipper/endlessplatformer/master/resources/music/dreamsofabove.mp3", scene, null, {
-                loop: true,
-                autoplay: false,
-                volume: 0.5
-            });
+            lavaGround.isVisible = false;
+            Game.lavaTemplateMesh = lavaGround;
+        }
+        update() {
+            if (!this.running)
+                return;
+            if ((this.player.getPos().y - this.lavaGround.position.y) < Game.FAST_LAVA_SPEED_THRESHOLD) {
+                this.lavaGround.position.y += Game.DEFAULT_LAVA_SPEED;
+            }
+            else {
+                this.lavaGround.position.y += Game.FAST_LAVA_SPEED;
+            }
+            // update the sorted physbox list for sort&sweep collisions
+            this.ySortBoxes();
+            // resolve physbox collisions
+            this.physBoxes.forEach(pbox => { if (pbox.isActive() && !pbox.isDisposed())
+                pbox.beforeCollisions(); });
+            this.physBoxes.forEach(pbox => { if (pbox.isActive() && !pbox.isDisposed())
+                pbox.resolveCollisions(0); });
+            this.physBoxes.forEach(pbox => { if (pbox.isActive() && !pbox.isDisposed())
+                pbox.afterCollisions(); });
+            // update fallbox clusters
+            this.fallboxClusters.forEach(cluster => { if (!cluster.isDisposed())
+                cluster.update(); });
+        }
+        dispose() {
+            scene.onBeforeRenderObservable.remove(this.updateCallbackFunc);
+            this.physBoxes.forEach((physBox) => physBox.dispose());
+            this.fallboxClusters.forEach((cluster) => cluster.dispose());
+            this.lavaGround.dispose();
         }
         getLavaLevel() {
             return this.lavaGround.position.y - 1;
@@ -282,7 +385,7 @@ window.addEventListener('DOMContentLoaded', () => {
     Game.FAST_LAVA_SPEED_THRESHOLD = 75;
     Game.DEFAULT_LAVA_SPEED = 0.035;
     Game.FAST_LAVA_SPEED = 0.2;
-    const game = new Game();
+    Game.LoadResources();
     class GameObj extends Observable {
     }
     class BoundBox extends GameObj {
@@ -315,6 +418,7 @@ window.addEventListener('DOMContentLoaded', () => {
             this.frozen = false;
             this.active = true;
             this.velocity = BABYLON.Vector3.Zero();
+            this.disposed = false;
             // collisions on 6 sides of physbox
             this.lastCollisions = new Map([
                 [Sides.Left, new Set()], [Sides.Right, new Set()], [Sides.Top, new Set()], [Sides.Bottom, new Set()], [Sides.Forward, new Set()], [Sides.Back, new Set()]
@@ -332,6 +436,8 @@ window.addEventListener('DOMContentLoaded', () => {
         unfreeze() { this.frozen = false; this.fire('freeze', false); return this; }
         isFrozen() { return this.frozen; }
         getMoverLevel() { return 1; }
+        dispose() { this.disposed = true; }
+        isDisposed() { return this.disposed; }
         onCollisionStart(side, physBox) {
             this.newCollisions.get(side).add(physBox);
         }
@@ -481,6 +587,7 @@ window.addEventListener('DOMContentLoaded', () => {
         constructor(cubeCount, startY) {
             this.iterIndex = 0;
             this.active = true;
+            this.disposed = false;
             this.topCluster = true;
             const fallBoxes = [];
             let frozenCount = 0;
@@ -550,8 +657,15 @@ window.addEventListener('DOMContentLoaded', () => {
             };
             this.SPS = SPS;
         }
+        isDisposed() { return this.disposed; }
+        dispose() {
+            this.SPS.dispose();
+            this.disposed = true;
+        }
         update() {
-            if (this.topCluster && ((this.topBox.getPos().y - game.getPlayer().getPos().y) < 100)) {
+            if (this.disposed)
+                return;
+            if (this.topCluster && ((this.topBox.getPos().y - game.getPlayer().getPos().y) < 200)) {
                 game.createNewCluster(200, this.topBox.getPos().y);
                 this.topCluster = false;
             }
@@ -590,50 +704,34 @@ window.addEventListener('DOMContentLoaded', () => {
         constructor() {
             super();
             this.bestHeight = 0;
-            BABYLON.SceneLoader.ImportMesh("", "https://raw.githubusercontent.com/lattesipper/endlessplatformer/master/resources/meshes/", "player.obj", scene, (meshes, particleSystems, skeletons) => {
-                const testMaterial = new BABYLON.StandardMaterial('', scene);
-                testMaterial.diffuseTexture = new BABYLON.Texture('https://raw.githubusercontent.com/lattesipper/endlessplatformer/master/resources/meshes/player.png', scene);
-                testMaterial.ambientColor = new BABYLON.Color3(1, 1, 1);
-                meshes[0].material = testMaterial;
-                meshes[0].position = this.getPos();
-                this.mesh = meshes[0];
-                const particleSystem = new BABYLON.ParticleSystem("particles", 2000, scene);
-                particleSystem.particleTexture = new BABYLON.Texture("https://raw.githubusercontent.com/lattesipper/endlessplatformer/master/resources/images/flare.png", scene);
-                particleSystem.emitter = meshes[0]; // the starting object, the emitter
-                particleSystem.minEmitBox = new BABYLON.Vector3(0, 0, 0); // Starting all from
-                particleSystem.maxEmitBox = new BABYLON.Vector3(0, 0, 0); // To...
-                particleSystem.color1 = new BABYLON.Color4(1.0, 1.0, 1.0, 1.0);
-                particleSystem.color2 = new BABYLON.Color4(1.0, 1.0, 1.0, 1.0);
-                particleSystem.colorDead = new BABYLON.Color4(0, 0, 0, 0.0);
-                particleSystem.minSize = 0.1;
-                particleSystem.maxSize = 0.5;
-                particleSystem.minLifeTime = 0.4;
-                particleSystem.maxLifeTime = 0.6;
-                particleSystem.emitRate = 2000;
-                particleSystem.blendMode = BABYLON.ParticleSystem.BLENDMODE_ONEONE;
-                particleSystem.gravity = new BABYLON.Vector3(0, 0, 0);
-                particleSystem.direction1 = new BABYLON.Vector3(-1, -1, -1);
-                particleSystem.direction2 = new BABYLON.Vector3(1, 1, 1);
-                particleSystem.minAngularSpeed = 0;
-                particleSystem.maxAngularSpeed = Math.PI;
-                particleSystem.minEmitPower = 6;
-                particleSystem.maxEmitPower = 10;
-                particleSystem.updateSpeed = 0.005;
-                this.explosionParticleSystem = particleSystem;
-                this.setSize(new BABYLON.Vector3(0.6658418, 0.8655933, 0.6658418));
-                this.setPos(new BABYLON.Vector3(0, 3, 0));
-            });
+            this.mesh = Player.templateMesh.createInstance('');
+            this.mesh.position = this.getPos();
+            const particleSystem = new BABYLON.ParticleSystem("particles", 2000, scene);
+            particleSystem.particleTexture = new BABYLON.Texture("https://raw.githubusercontent.com/lattesipper/endlessplatformer/master/resources/images/flare.png", scene);
+            particleSystem.emitter = this.mesh; // the starting object, the emitter
+            particleSystem.minEmitBox = new BABYLON.Vector3(0, 0, 0); // Starting all from
+            particleSystem.maxEmitBox = new BABYLON.Vector3(0, 0, 0); // To...
+            particleSystem.color1 = new BABYLON.Color4(1.0, 1.0, 1.0, 1.0);
+            particleSystem.color2 = new BABYLON.Color4(1.0, 1.0, 1.0, 1.0);
+            particleSystem.colorDead = new BABYLON.Color4(0, 0, 0, 0.0);
+            particleSystem.minSize = 0.1;
+            particleSystem.maxSize = 0.5;
+            particleSystem.minLifeTime = 0.4;
+            particleSystem.maxLifeTime = 0.6;
+            particleSystem.emitRate = 2000;
+            particleSystem.blendMode = BABYLON.ParticleSystem.BLENDMODE_ONEONE;
+            particleSystem.gravity = new BABYLON.Vector3(0, 0, 0);
+            particleSystem.direction1 = new BABYLON.Vector3(-1, -1, -1);
+            particleSystem.direction2 = new BABYLON.Vector3(1, 1, 1);
+            particleSystem.minAngularSpeed = 0;
+            particleSystem.maxAngularSpeed = Math.PI;
+            particleSystem.minEmitPower = 6;
+            particleSystem.maxEmitPower = 10;
+            particleSystem.updateSpeed = 0.005;
+            this.explosionParticleSystem = particleSystem;
+            this.setSize(new BABYLON.Vector3(0.6658418, 0.8655933, 0.6658418));
+            this.setPos(new BABYLON.Vector3(0, 3, 0));
             camera.setFollower(this);
-        }
-        disable() {
-            super.disable();
-            this.mesh.visibility = 0;
-        }
-        kill() {
-            this.disable();
-            this.explosionParticleSystem.start();
-            Player.sndDeath.play();
-            setInterval(() => this.explosionParticleSystem.stop(), 150);
         }
         static LoadResources() {
             Player.sndJump = new BABYLON.Sound("", "https://raw.githubusercontent.com/lattesipper/endlessplatformer/master/resources/sounds/jump.wav", scene, null, {
@@ -651,6 +749,29 @@ window.addEventListener('DOMContentLoaded', () => {
                 autoplay: false,
                 volume: 0.5
             });
+            BABYLON.SceneLoader.ImportMesh("", "https://raw.githubusercontent.com/lattesipper/endlessplatformer/master/resources/meshes/", "player.obj", scene, (meshes, particleSystems, skeletons) => {
+                const testMaterial = new BABYLON.StandardMaterial('', scene);
+                testMaterial.diffuseTexture = new BABYLON.Texture('https://raw.githubusercontent.com/lattesipper/endlessplatformer/master/resources/meshes/player.png', scene);
+                testMaterial.ambientColor = new BABYLON.Color3(1, 1, 1);
+                meshes[0].material = testMaterial;
+                meshes[0].isVisible = false;
+                Player.templateMesh = (meshes[0]);
+            });
+        }
+        dispose() {
+            super.dispose();
+            this.mesh.dispose();
+            this.explosionParticleSystem.dispose();
+        }
+        disable() {
+            super.disable();
+            this.mesh.isVisible = false;
+        }
+        kill() {
+            this.disable();
+            this.explosionParticleSystem.start();
+            Player.sndDeath.play();
+            setInterval(() => this.explosionParticleSystem.stop(), 150);
         }
         onCollisionStart(side, physBox) {
             if (!Player.sndHitHead.isPlaying && side == Sides.Top && physBox instanceof FallBox)
@@ -830,8 +951,8 @@ window.addEventListener('DOMContentLoaded', () => {
             }
             // Update GUI
             this.bestHeight = Math.max(this.getPos().y, this.bestHeight);
-            text1.text = Math.round(this.getPos().y) + "ft";
-            text2.text = Math.round(this.bestHeight) + "ft";
+            gameplayContainer.getChildByName('currentheight').text = Math.round(this.getPos().y) + "ft";
+            gameplayContainer.getChildByName('maxheight').text = Math.round(this.bestHeight) + "ft";
         }
     }
     Player.moveSpeed = 0.1;
@@ -844,5 +965,4 @@ window.addEventListener('DOMContentLoaded', () => {
     Player.sideSlideSpeed = 0.01;
     Player.maxVerticalSpeed = 0.5;
     Player.LoadResources();
-    game.start();
 });
