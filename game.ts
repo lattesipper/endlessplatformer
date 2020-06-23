@@ -16,12 +16,21 @@ scene.fogColor = new BABYLON.Color3(1, 0, 0);
 scene.clearColor = new BABYLON.Color4(1, 0, 0, 1.0);
 scene.ambientColor = new BABYLON.Color3(0.3, 0.3, 0.3);
 
+// Run the render loop.
+engine.runRenderLoop(() => {
+    scene.render();
+});
+window.addEventListener('resize', () => {
+    engine.resize();
+});
+
+// Game instance
 let game;
 
-// GUI (to refactor into a class)
+// GUI
 const gui = BABYLON.GUI.AdvancedDynamicTexture.CreateFullscreenUI("UI");
 gui.idealWidth = 1080;
-
+//  LOADING SCREEN
 const loadingContainer = new BABYLON.GUI.Rectangle();
 loadingContainer.width = 1.0;
 loadingContainer.height = 1.0;
@@ -46,7 +55,7 @@ loadingContainer.background = "rgb(0,0,0)";
     }, 500);
 }
 gui.addControl(loadingContainer);
-
+//  GAME OVER SCREEN
 const gameOverContainer = new BABYLON.GUI.Rectangle();
 gameOverContainer.width = 1.0;
 gameOverContainer.height = 1.0;
@@ -80,7 +89,7 @@ gameOverContainer.isVisible = false;
 
 }
 gui.addControl(gameOverContainer);
-
+//  GAMEPLAY SCREEN
 const gameplayContainer = new BABYLON.GUI.Rectangle();
 gameplayContainer.width = 1.0;
 gameplayContainer.height = 1.0;
@@ -117,6 +126,7 @@ gameplayContainer.isVisible = false;
 }
 gui.addControl(gameplayContainer);
 
+// PAUSE SCREEN
 const pauseContainer = new BABYLON.GUI.Rectangle();
 pauseContainer.width = 1.0;
 pauseContainer.height = 1.0;
@@ -157,6 +167,7 @@ pauseContainer.isVisible = false;
 }
 gui.addControl(pauseContainer);
 
+// MENU SCREEN
 const menuContainer = new BABYLON.GUI.Rectangle();
 menuContainer.width = 1.0;
 menuContainer.height = 1.0;
@@ -205,8 +216,7 @@ menuContainer.isVisible = false;
 }
 gui.addControl(menuContainer);
 
-
-// observable object that fires events
+// Observable object that fires events
 class Observable {
     public onEvent(eventName, callback) : CallableFunction {
         if (!this.subscribers.has(eventName))
@@ -221,6 +231,7 @@ class Observable {
     private subscribers : Map<string, Set<CallableFunction>> = new Map();
 }
 
+// Singleton input manager
 class InputManager extends Observable {
     private constructor() {
         super();
@@ -238,22 +249,12 @@ class InputManager extends Observable {
         }));
     }
     public static getInstance() : InputManager { return this.instance; }
-    public isKeyPressed(key) {
-        return this.inputMap.get(key);
-    };
+    public isKeyPressed(key) { return this.inputMap.get(key); };
     private inputMap: Map<string, boolean>;
     private static instance: InputManager = new InputManager();
 }
-// Run the render loop.
-engine.runRenderLoop(() => {
-    scene.render();
-});
-window.addEventListener('resize', () => {
-    engine.resize();
-});
 
-
-// rotateable camera
+// Singleton camera, rotates in 90 degree increments
 class GameCamera {
     public static LoadResources() : Promise<any> {
         return Promise.all([
@@ -266,21 +267,19 @@ class GameCamera {
             })
         ]);
     }
-    public setY(y: number) { this.y = y; }
-    public getY() : number { return this.y; }
+    public setY(y: number) { this.node.position.y = y }
+    public getY() : number { return this.node.position.y }
     public setAlpha(alpha: number) { this.camera.alpha = alpha; }
     public getAlpha() : number { return this.camera.alpha; }
     public constructor() {
+        // use an arc-rotate camera
         const camera = new BABYLON.ArcRotateCamera("Camera", 0, 0, 25, new BABYLON.Vector3(0, 0, 0), scene);
         camera.setPosition(new BABYLON.Vector3(0, 0, 0));
         camera.beta = 0.65;
         camera.radius = 25;
         camera.parent = this.node;
         this.camera = camera;
-
         scene.onBeforeRenderObservable.add(() => {
-            // y-track the follower
-            this.node.position.y = this.y;
             // wrap camera alpha
             if (camera.alpha < 0) {
                 camera.alpha = (Math.PI * 2) + camera.alpha;
@@ -316,14 +315,13 @@ class GameCamera {
     }
     private static rotateSound: BABYLON.Sound;
     private camera: BABYLON.Camera;
-    private y: number = 0;
     private rotating: boolean = false;
     private rotationIndex: number = 0;
     private node: BABYLON.TransformNode = new BABYLON.TransformNode('', scene);
 }
 const camera = new GameCamera();
 
-// sides enum class
+// Enum class representing the 6 sides of a cube
 class Sides {
     private constructor (dim, direction) {
         this.dim = dim;
@@ -331,20 +329,14 @@ class Sides {
     }
     public flip() {
         switch(this) {
-            case Sides.Left: return Sides.Right;
-            case Sides.Right: return Sides.Left;
-            case Sides.Top: return Sides.Bottom;
-            case Sides.Bottom: return Sides.Top;
-            case Sides.Forward: return Sides.Back;
-            case Sides.Back: return Sides.Forward;
+            case Sides.Left: return Sides.Right;    case Sides.Right: return Sides.Left;
+            case Sides.Top: return Sides.Bottom;    case Sides.Bottom: return Sides.Top;
+            case Sides.Forward: return Sides.Back;  case Sides.Back: return Sides.Forward;
         }
     }
-    public static Left = new Sides('x', -1);
-    public static Right = new Sides('x', 1);
-    public static Forward = new Sides('z', 1);
-    public static Back = new Sides('z', -1);
-    public static Top = new Sides('y', 1);
-    public static Bottom = new Sides('y', -1);
+    public static Left = new Sides('x', -1);        public static Right = new Sides('x', 1);
+    public static Forward = new Sides('z', 1);      public static Back = new Sides('z', -1);
+    public static Top = new Sides('y', 1);          public static Bottom = new Sides('y', -1);
     public dim : string;
     public direction : number;
 }
@@ -353,9 +345,9 @@ enum GameMode {
     Playing,
     Spectating
 }
+// Game class, responsible for managing contained phys-objects
 class Game {
     public static LoadResources() : Promise<any> {
-        // load background music
         return Promise.all([
             new Promise((resolve) => {
                 Game.backgroundMusic = new BABYLON.Sound("", "https://raw.githubusercontent.com/lattesipper/endlessplatformer/master/resources/music/dreamsofabove.mp3", scene, resolve, {
@@ -381,31 +373,8 @@ class Game {
             })
         ]);
     }
-    public constructor() { 
-        Game.backgroundMusic.play();
-        camera.resetRotationindex();
-        this.updateCallbackFunc = (() => this.update());
-        scene.onBeforeRenderObservable.add(this.updateCallbackFunc);
-        this.lavaGround = Game.lavaTemplateMesh.createInstance('');
-        this.callbackFunctions.push(
-            InputManager.getInstance().onEvent('keyDown', (key) => {
-                if (this.canPause) {
-                    switch(key) {
-                        case 'p':
-                            if (this.running) {
-                                pauseContainer.isVisible = true;
-                                this.running = false;
-                            } else {
-                                pauseContainer.isVisible = false;
-                                this.running = true;
-                            }
-                            break;
-                    }
-                }
-            })
-        );
-    }
     public beginSpactorMode() {
+        // remain in Playing mode for 3 seconds, before switching to spectator
         setTimeout(() => {
             this.mode = GameMode.Spectating;
             this.lavaGround.position.y = -10;
@@ -419,6 +388,7 @@ class Game {
     private update() {
         if (!this.running)
             return;
+        // perform mode-specific update logic
         switch(this.mode) {
             case GameMode.Playing:
                 if ((this.player.getPos().y - this.lavaGround.position.y) < Game.FAST_LAVA_SPEED_THRESHOLD) {
@@ -455,8 +425,32 @@ class Game {
     public pause() { this.running = false; }
     public play() { this.running = true; }
     public start() {
-        // create initial cube cluster
-        this.createNewCluster(200, 20);
+        // setup update callback
+        this.updateCallbackFunc = (() => this.update());
+        scene.onBeforeRenderObservable.add(this.updateCallbackFunc);
+
+        // setup pause callback
+        this.callbackFunctions.push(
+            InputManager.getInstance().onEvent('keyDown', (key) => {
+                if (this.canPause) {
+                    switch(key) {
+                        case 'p':
+                            if (this.running) {
+                                pauseContainer.isVisible = true;
+                                this.running = false;
+                            } else {
+                                pauseContainer.isVisible = false;
+                                this.running = true;
+                            }
+                            break;
+                    }
+                }
+            })
+        );
+
+        // create lava
+        this.lavaGround = Game.lavaTemplateMesh.createInstance('');
+
         // create frozen box at the bottom to catch them all
         let bottomBox = new FloorBox();
         bottomBox
@@ -464,11 +458,19 @@ class Game {
                 .setPos(new BABYLON.Vector3(0, 0, 0))
                 .setSize(new BABYLON.Vector3(10, 10, 10));
         this.addPhysBox(bottomBox);
-        // all is ready, add the player
+
+        // create initial cube cluster
+        this.createNewCluster(200, 20);
+
+        // all is ready, create the player
         const player = new Player();
         player.setPos(new BABYLON.Vector3(0, 7, 0));
         this.addPhysBox(player);
         this.player = player;
+
+        // play background music
+        Game.backgroundMusic.play();
+        camera.resetRotationindex();
     }
     public createNewCluster(cubeCount, startY) { this.fallboxClusters.push(new FallBoxCluster(cubeCount, startY)); }
 
@@ -577,9 +579,11 @@ class PhysBox extends BoundBox {
     public isActive() : boolean { return this.active; }
     public disable() { this.active = false; }
     public enable() { this.active = true; }
+
     public freeze() : PhysBox { this.frozen = true; this.fire('freeze', true); return this; }
     public unfreeze() : PhysBox { this.frozen = false; this.fire('freeze', false); return this; }
     public isFrozen() : boolean { return this.frozen; }
+
     public getMoverLevel() : number { return 1; }
 
     public dispose() { this.disposed = true; }
@@ -598,7 +602,7 @@ class PhysBox extends BoundBox {
                 this.getVelocity().z = physBox.getVelocity().z;
         }
     }
-    public onCollisionStop(side: Sides, physBox: PhysBox) { 
+    public onCollisionStop(side: Sides, physBox: PhysBox) {
 
     }
 

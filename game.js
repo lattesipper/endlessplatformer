@@ -12,10 +12,19 @@ window.addEventListener('DOMContentLoaded', () => {
     scene.fogColor = new BABYLON.Color3(1, 0, 0);
     scene.clearColor = new BABYLON.Color4(1, 0, 0, 1.0);
     scene.ambientColor = new BABYLON.Color3(0.3, 0.3, 0.3);
+    // Run the render loop.
+    engine.runRenderLoop(() => {
+        scene.render();
+    });
+    window.addEventListener('resize', () => {
+        engine.resize();
+    });
+    // Game instance
     let game;
-    // GUI (to refactor into a class)
+    // GUI
     const gui = BABYLON.GUI.AdvancedDynamicTexture.CreateFullscreenUI("UI");
     gui.idealWidth = 1080;
+    //  LOADING SCREEN
     const loadingContainer = new BABYLON.GUI.Rectangle();
     loadingContainer.width = 1.0;
     loadingContainer.height = 1.0;
@@ -40,6 +49,7 @@ window.addEventListener('DOMContentLoaded', () => {
         }, 500);
     }
     gui.addControl(loadingContainer);
+    //  GAME OVER SCREEN
     const gameOverContainer = new BABYLON.GUI.Rectangle();
     gameOverContainer.width = 1.0;
     gameOverContainer.height = 1.0;
@@ -71,6 +81,7 @@ window.addEventListener('DOMContentLoaded', () => {
         gameOverContainer.addControl(btnMenu);
     }
     gui.addControl(gameOverContainer);
+    //  GAMEPLAY SCREEN
     const gameplayContainer = new BABYLON.GUI.Rectangle();
     gameplayContainer.width = 1.0;
     gameplayContainer.height = 1.0;
@@ -105,6 +116,7 @@ window.addEventListener('DOMContentLoaded', () => {
         gameplayContainer.addControl(text2);
     }
     gui.addControl(gameplayContainer);
+    // PAUSE SCREEN
     const pauseContainer = new BABYLON.GUI.Rectangle();
     pauseContainer.width = 1.0;
     pauseContainer.height = 1.0;
@@ -144,6 +156,7 @@ window.addEventListener('DOMContentLoaded', () => {
         pauseContainer.addControl(centerBox);
     }
     gui.addControl(pauseContainer);
+    // MENU SCREEN
     const menuContainer = new BABYLON.GUI.Rectangle();
     menuContainer.width = 1.0;
     menuContainer.height = 1.0;
@@ -189,7 +202,7 @@ window.addEventListener('DOMContentLoaded', () => {
         menuContainer.addControl(btnPlay);
     }
     gui.addControl(menuContainer);
-    // observable object that fires events
+    // Observable object that fires events
     class Observable {
         constructor() {
             this.subscribers = new Map();
@@ -205,6 +218,7 @@ window.addEventListener('DOMContentLoaded', () => {
                 this.subscribers.get(eventName).forEach(callback => callback(...args));
         }
     }
+    // Singleton input manager
     class InputManager extends Observable {
         constructor() {
             super();
@@ -222,26 +236,17 @@ window.addEventListener('DOMContentLoaded', () => {
             }));
         }
         static getInstance() { return this.instance; }
-        isKeyPressed(key) {
-            return this.inputMap.get(key);
-        }
+        isKeyPressed(key) { return this.inputMap.get(key); }
         ;
     }
     InputManager.instance = new InputManager();
-    // Run the render loop.
-    engine.runRenderLoop(() => {
-        scene.render();
-    });
-    window.addEventListener('resize', () => {
-        engine.resize();
-    });
-    // rotateable camera
+    // Singleton camera, rotates in 90 degree increments
     class GameCamera {
         constructor() {
-            this.y = 0;
             this.rotating = false;
             this.rotationIndex = 0;
             this.node = new BABYLON.TransformNode('', scene);
+            // use an arc-rotate camera
             const camera = new BABYLON.ArcRotateCamera("Camera", 0, 0, 25, new BABYLON.Vector3(0, 0, 0), scene);
             camera.setPosition(new BABYLON.Vector3(0, 0, 0));
             camera.beta = 0.65;
@@ -249,8 +254,6 @@ window.addEventListener('DOMContentLoaded', () => {
             camera.parent = this.node;
             this.camera = camera;
             scene.onBeforeRenderObservable.add(() => {
-                // y-track the follower
-                this.node.position.y = this.y;
                 // wrap camera alpha
                 if (camera.alpha < 0) {
                     camera.alpha = (Math.PI * 2) + camera.alpha;
@@ -290,8 +293,8 @@ window.addEventListener('DOMContentLoaded', () => {
                 })
             ]);
         }
-        setY(y) { this.y = y; }
-        getY() { return this.y; }
+        setY(y) { this.node.position.y = y; }
+        getY() { return this.node.position.y; }
         setAlpha(alpha) { this.camera.alpha = alpha; }
         getAlpha() { return this.camera.alpha; }
         getRotationIndex() { return this.rotationIndex; }
@@ -301,7 +304,7 @@ window.addEventListener('DOMContentLoaded', () => {
         }
     }
     const camera = new GameCamera();
-    // sides enum class
+    // Enum class representing the 6 sides of a cube
     class Sides {
         constructor(dim, direction) {
             this.dim = dim;
@@ -329,6 +332,7 @@ window.addEventListener('DOMContentLoaded', () => {
         GameMode[GameMode["Playing"] = 0] = "Playing";
         GameMode[GameMode["Spectating"] = 1] = "Spectating";
     })(GameMode || (GameMode = {}));
+    // Game class, responsible for managing contained phys-objects
     class Game {
         constructor() {
             this.mode = GameMode.Playing;
@@ -340,30 +344,8 @@ window.addEventListener('DOMContentLoaded', () => {
             this.physBoxesY = []; // sorted list of physboxes
             this.physBoxes = []; // unsorted list of physboxes
             this.yIndexes = new Map(); // physbox -> sorted Y index    
-            Game.backgroundMusic.play();
-            camera.resetRotationindex();
-            this.updateCallbackFunc = (() => this.update());
-            scene.onBeforeRenderObservable.add(this.updateCallbackFunc);
-            this.lavaGround = Game.lavaTemplateMesh.createInstance('');
-            this.callbackFunctions.push(InputManager.getInstance().onEvent('keyDown', (key) => {
-                if (this.canPause) {
-                    switch (key) {
-                        case 'p':
-                            if (this.running) {
-                                pauseContainer.isVisible = true;
-                                this.running = false;
-                            }
-                            else {
-                                pauseContainer.isVisible = false;
-                                this.running = true;
-                            }
-                            break;
-                    }
-                }
-            }));
         }
         static LoadResources() {
-            // load background music
             return Promise.all([
                 new Promise((resolve) => {
                     Game.backgroundMusic = new BABYLON.Sound("", "https://raw.githubusercontent.com/lattesipper/endlessplatformer/master/resources/music/dreamsofabove.mp3", scene, resolve, {
@@ -390,6 +372,7 @@ window.addEventListener('DOMContentLoaded', () => {
             ]);
         }
         beginSpactorMode() {
+            // remain in Playing mode for 3 seconds, before switching to spectator
             setTimeout(() => {
                 this.mode = GameMode.Spectating;
                 this.lavaGround.position.y = -10;
@@ -403,6 +386,7 @@ window.addEventListener('DOMContentLoaded', () => {
         update() {
             if (!this.running)
                 return;
+            // perform mode-specific update logic
             switch (this.mode) {
                 case GameMode.Playing:
                     if ((this.player.getPos().y - this.lavaGround.position.y) < Game.FAST_LAVA_SPEED_THRESHOLD) {
@@ -444,8 +428,28 @@ window.addEventListener('DOMContentLoaded', () => {
         pause() { this.running = false; }
         play() { this.running = true; }
         start() {
-            // create initial cube cluster
-            this.createNewCluster(200, 20);
+            // setup update callback
+            this.updateCallbackFunc = (() => this.update());
+            scene.onBeforeRenderObservable.add(this.updateCallbackFunc);
+            // setup pause callback
+            this.callbackFunctions.push(InputManager.getInstance().onEvent('keyDown', (key) => {
+                if (this.canPause) {
+                    switch (key) {
+                        case 'p':
+                            if (this.running) {
+                                pauseContainer.isVisible = true;
+                                this.running = false;
+                            }
+                            else {
+                                pauseContainer.isVisible = false;
+                                this.running = true;
+                            }
+                            break;
+                    }
+                }
+            }));
+            // create lava
+            this.lavaGround = Game.lavaTemplateMesh.createInstance('');
             // create frozen box at the bottom to catch them all
             let bottomBox = new FloorBox();
             bottomBox
@@ -453,11 +457,16 @@ window.addEventListener('DOMContentLoaded', () => {
                 .setPos(new BABYLON.Vector3(0, 0, 0))
                 .setSize(new BABYLON.Vector3(10, 10, 10));
             this.addPhysBox(bottomBox);
-            // all is ready, add the player
+            // create initial cube cluster
+            this.createNewCluster(200, 20);
+            // all is ready, create the player
             const player = new Player();
             player.setPos(new BABYLON.Vector3(0, 7, 0));
             this.addPhysBox(player);
             this.player = player;
+            // play background music
+            Game.backgroundMusic.play();
+            camera.resetRotationindex();
         }
         createNewCluster(cubeCount, startY) { this.fallboxClusters.push(new FallBoxCluster(cubeCount, startY)); }
         addPhysBox(box) { this.physBoxes.push(box); this.physBoxesY.push(box); }
@@ -502,9 +511,9 @@ window.addEventListener('DOMContentLoaded', () => {
                         break;
                 }
             }
-            // if (physBox instanceof Player && Math.random() > 0.99) {
-            //     console.log(tests);
-            // }
+            if (physBox instanceof Player && Math.random() > 0.99) {
+                console.log(tests);
+            }
             return collisions;
         }
     }
