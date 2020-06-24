@@ -350,25 +350,25 @@ class Game {
     public static LoadResources() : Promise<any> {
         return Promise.all([
             new Promise((resolve) => {
-                Game.backgroundMusic = new BABYLON.Sound("", "https://raw.githubusercontent.com/lattesipper/endlessplatformer/master/resources/music/dreamsofabove.mp3", scene, resolve, {
+                Game.BACKGROUND_MUSIC = new BABYLON.Sound("", "https://raw.githubusercontent.com/lattesipper/endlessplatformer/master/resources/music/dreamsofabove.mp3", scene, resolve, {
                     loop: true,
                     autoplay:  false,
                     volume: 0.5
                 });
             }),
             new Promise((resolve) => {
-                const lavaGround = BABYLON.Mesh.CreateGround("ground", 500, 500, 50, scene);
-                lavaGround.visibility = 0.5;
-                lavaGround.position.y = -10;
+                const lava = BABYLON.Mesh.CreateGround("ground", 500, 500, 50, scene);
+                lava.visibility = 0.5;
+                lava.position.y = -10;
                 const lavaMaterial = new BABYLON.LavaMaterial("lava", scene);	
                 lavaMaterial.noiseTexture = new BABYLON.Texture("https://www.babylonjs-playground.com/textures/lava/cloud.png", scene); // Set the bump texture
                 lavaMaterial.diffuseTexture = new BABYLON.Texture("https://www.babylonjs-playground.com/textures/lava/lavatile.jpg", scene); // Set the diffuse texture
                 lavaMaterial.speed = 0.5;
                 lavaMaterial.fogColor = new BABYLON.Color3(1, 0, 0);
                 lavaMaterial.unlit = true;
-                lavaGround.material = lavaMaterial;
-                lavaGround.isVisible = false;
-                Game.lavaTemplateMesh = lavaGround;
+                lava.material = lavaMaterial;
+                lava.isVisible = false;
+                Game.MESH_LAVA = lava;
                 resolve();
             })
         ]);
@@ -377,13 +377,13 @@ class Game {
         // remain in Playing mode for 3 seconds, before switching to spectator
         setTimeout(() => {
             this.mode = GameMode.Spectating;
-            this.lavaGround.position.y = -10;
+            this.lava.position.y = -10;
             this.deathDelayOver = true;
             gameplayContainer.isVisible = false;
             gameOverContainer.isVisible = true;
             camera.setY(0);
-            this.canPause = false;
         }, 3000);
+        this.canPause = false;
     }
     private update() {
         if (!this.running)
@@ -391,17 +391,20 @@ class Game {
         // perform mode-specific update logic
         switch(this.mode) {
             case GameMode.Playing:
-                if ((this.player.getPos().y - this.lavaGround.position.y) < Game.FAST_LAVA_SPEED_THRESHOLD) {
-                    this.lavaGround.position.y += Game.DEFAULT_LAVA_SPEED;
+                if ((this.player.getPos().y - this.lava.position.y) < Game.PLAYER_DISTANCE_FOR_FAST_LAVA) {
+                    this.lava.position.y += Game.LAVA_SPEED_STANDARD;
                 } else {
-                    this.lavaGround.position.y += Game.FAST_LAVA_SPEED;
+                    this.lava.position.y += Game.LAVA_SPEED_FAST;
                 }
                 // update the sorted physbox list for sort&sweep collisions
                 this.ySortBoxes();
                 // resolve physbox collisions
-                this.physBoxes.forEach(pbox => { if (pbox.isActive() && !pbox.isDisposed()) pbox.beforeCollisions(); });
-                this.physBoxes.forEach(pbox => { if (pbox.isActive() && !pbox.isDisposed()) pbox.resolveCollisions(0); });
-                this.physBoxes.forEach(pbox => { if (pbox.isActive() && !pbox.isDisposed()) pbox.afterCollisions(); });
+                for (let i = this.updateCutoffYIndex; i < this.physBoxesSortedY.length; i++) 
+                { const pbox = this.physBoxesSortedY[i]; if (pbox.isActive() && !pbox.isDisposed()) pbox.beforeCollisions(); }
+                for (let i = this.updateCutoffYIndex; i < this.physBoxesSortedY.length; i++) 
+                { const pbox = this.physBoxesSortedY[i]; if (pbox.isActive() && !pbox.isDisposed()) pbox.resolveCollisions(0); }
+                for (let i = this.updateCutoffYIndex; i < this.physBoxesSortedY.length; i++) 
+                { const pbox = this.physBoxesSortedY[i]; if (pbox.isActive() && !pbox.isDisposed()) pbox.afterCollisions(); }
                 // update fallbox clusters
                 this.fallboxClusters.forEach(cluster => { if (!cluster.isDisposed()) cluster.update(); });
                 break;
@@ -414,14 +417,14 @@ class Game {
         }
     }
     public dispose() {
-        Game.backgroundMusic.stop();
+        Game.BACKGROUND_MUSIC.stop();
         scene.onBeforeRenderObservable.removeCallback(this.updateCallbackFunc);
-        this.physBoxes.forEach((physBox) => physBox.dispose());
+        this.physBoxesSortedY.forEach((physBox) => physBox.dispose());
         this.fallboxClusters.forEach((cluster) => cluster.dispose());
-        this.lavaGround.dispose();
+        this.lava.dispose();
         this.callbackFunctions.forEach((func) => func());
     }
-    public getLavaLevel() : number { return this.lavaGround.position.y - 1; }
+    public getLavaLevel() : number { return this.lava.position.y - 1; }
     public pause() { this.running = false; }
     public play() { this.running = true; }
     public start() {
@@ -449,7 +452,7 @@ class Game {
         );
 
         // create lava
-        this.lavaGround = Game.lavaTemplateMesh.createInstance('');
+        this.lava = Game.MESH_LAVA.createInstance('');
 
         // create frozen box at the bottom to catch them all
         let bottomBox = new FloorBox();
@@ -469,52 +472,57 @@ class Game {
         this.player = player;
 
         // play background music
-        Game.backgroundMusic.play();
+        Game.BACKGROUND_MUSIC.play();
         camera.resetRotationindex();
     }
     public createNewCluster(cubeCount, startY) { this.fallboxClusters.push(new FallBoxCluster(cubeCount, startY)); }
 
-    public addPhysBox(box) { this.physBoxes.push(box); this.physBoxesY.push(box); }
+    public addPhysBox(box) { this.physBoxesSortedY.push(box); }
 
-    public getPhysObjects() { return this.physBoxes; }
+    public getPhysObjects() { return this.physBoxesSortedY; }
     public getPlayer() : Player { return this.player; }
 
     // SORT
     private ySortBoxes() { 
         // O(N) average case for insertion sort after physbox updates
-        for (let i = 1; i < this.physBoxesY.length; i++) {
+        for (let i = this.updateCutoffYIndex; i < this.physBoxesSortedY.length; i++) {
             let j = i - 1;
-            let tmp = this.physBoxesY[i];
-            while (j >= 0 && this.physBoxesY[j].getPos().y > tmp.getPos().y) {
-                this.physBoxesY[j + 1] = this.physBoxesY[j];
+            let tmp = this.physBoxesSortedY[i];
+            while (j >= 0 && this.physBoxesSortedY[j].getPos().y > tmp.getPos().y) {
+                this.physBoxesSortedY[j + 1] = this.physBoxesSortedY[j];
                 j--
             }
-            this.physBoxesY[j+1] = tmp;
-            this.yIndexes.set(tmp, j+1);
+            this.physBoxesSortedY[j+1] = tmp;
+            this.physBoxToYIndex.set(tmp, j+1);
+        }
+        // Update cutoff y index (anything below is lost to the lava, and need not be resorted or updated)
+        for (let i = this.updateCutoffYIndex; i < this.physBoxesSortedY.length; i++) {
+            if (this.physBoxesSortedY[i].getPos().y < (this.lava.position.y - Game.MAXIMUM_YDISTANCE_UNDER_LAVA))
+                this.updateCutoffYIndex = i;
         }
     }
     // SWEEP AND PRUNE
     public getCollisions(physBox: PhysBox, dim: string) {
-        let yIndex = this.yIndexes.get(physBox);
+        let yIndex = this.physBoxToYIndex.get(physBox);
         let collisions = [];
         let tests = 0;
         if (dim != 'y' || physBox.getVelocity().y < 0) {
             for (let i = yIndex; i >= 0; i--) {
-                let candiate = this.physBoxesY[i];
+                let candiate = this.physBoxesSortedY[i];
                 tests++;
                 if (candiate.isActive() && physBox.intersects(candiate))
                     collisions.push(candiate);
-                if (physBox.getSide(Sides.Bottom) > (candiate.getPos().y + (PhysBox.MAX_Y_SIZE/2)))
+                if (physBox.getSide(Sides.Bottom) > (candiate.getPos().y + (PhysBox.MAXIMUM_HEIGHT/2)))
                     break;
             }
         }
         if (dim != 'y' || physBox.getVelocity().y > 0) {
-            for (let i = yIndex; i < this.physBoxes.length; i++) {
+            for (let i = yIndex; i < this.physBoxesSortedY.length; i++) {
                 tests++;
-                let candiate = this.physBoxesY[i];
+                let candiate = this.physBoxesSortedY[i];
                 if (candiate.isActive() && physBox.intersects(candiate))
                     collisions.push(candiate);
-                if (physBox.getSide(Sides.Top) < (candiate.getPos().y - (PhysBox.MAX_Y_SIZE/2)))
+                if (physBox.getSide(Sides.Top) < (candiate.getPos().y - (PhysBox.MAXIMUM_HEIGHT/2)))
                     break;
             }
         }
@@ -523,11 +531,15 @@ class Game {
         // }
         return collisions;
     }
-    private static backgroundMusic: BABYLON.Sound;
-    private static lavaTemplateMesh: BABYLON.Mesh;
-    private static FAST_LAVA_SPEED_THRESHOLD: number = 75;
-    private static DEFAULT_LAVA_SPEED: number = 0.035;
-    private static FAST_LAVA_SPEED: number = 0.2;
+
+    // RESOURCES
+    private static BACKGROUND_MUSIC: BABYLON.Sound;
+    private static MESH_LAVA: BABYLON.Mesh;
+    // GAME CONSTANTS
+    private static PLAYER_DISTANCE_FOR_FAST_LAVA: number = 75;
+    private static LAVA_SPEED_STANDARD: number = 0.035;
+    private static LAVA_SPEED_FAST: number = 0.2;
+    private static MAXIMUM_YDISTANCE_UNDER_LAVA: number = 100;
 
     private mode: GameMode = GameMode.Playing;
     private deathDelayOver: boolean = false;
@@ -536,15 +548,15 @@ class Game {
     private updateCallbackFunc;
     private callbackFunctions : Array<CallableFunction> = [];
 
-    private running : boolean = true;                       // game running or paused?
-    private fallboxClusters : Array<FallBoxCluster> = [];  
+    private running : boolean = true;
+    private fallboxClusters : Array<FallBoxCluster> = [];
 
-    private physBoxesY: Array<PhysBox> = [];                // sorted list of physboxes
-    private physBoxes: Array<PhysBox> = [];                 // unsorted list of physboxes
-    private yIndexes = new Map<PhysBox, number>();          // physbox -> sorted Y index    
+    private physBoxesSortedY: Array<PhysBox> = [];
+    private physBoxToYIndex = new Map<PhysBox, number>();
+    private updateCutoffYIndex: number = 0;
 
-    private player: Player;                                 // the player
-    private lavaGround: BABYLON.TransformNode;              // the lava
+    private player: Player;
+    private lava: BABYLON.TransformNode;
 }
 
 class GameObj extends Observable {}
@@ -574,7 +586,7 @@ class BoundBox extends GameObj {
 
 class PhysBox extends BoundBox {
     public setVelocity(velocity: BABYLON.Vector3) : PhysBox { this.velocity = velocity.clone(); return this; }
-    public getVelocity() { return this.frozen ? PhysBox.frozenVelocity : this.velocity; }
+    public getVelocity() { return this.frozen ? PhysBox.FROZEN_VELOCITY : this.velocity; }
 
     public isActive() : boolean { return this.active; }
     public disable() { this.active = false; }
@@ -589,9 +601,7 @@ class PhysBox extends BoundBox {
     public dispose() { this.disposed = true; }
     public isDisposed() : boolean { return this.disposed; }
 
-    public onCollisionStart(side: Sides, physBox: PhysBox) { 
-        this.newCollisions.get(side).add(physBox);
-    }
+    public onCollisionStart(side: Sides, physBox: PhysBox) { }
     public onCollisionHold(side: Sides, physBox: PhysBox) {
         if (this.getMoverLevel() < physBox.getMoverLevel()) {
             if (side == Sides.Top || side == Sides.Bottom)
@@ -602,20 +612,18 @@ class PhysBox extends BoundBox {
                 this.getVelocity().z = physBox.getVelocity().z;
         }
     }
-    public onCollisionStop(side: Sides, physBox: PhysBox) {
-
-    }
+    public onCollisionStop(side: Sides, physBox: PhysBox) { }
 
     public beforeCollisions() {
-        let tmp = this.newCollisions;
-        this.newCollisions = this.lastCollisions;
-        this.newCollisions.forEach((collisions, side) => collisions.clear());
-        this.lastCollisions = tmp;
+        let tmp = this.collisionsThisUpdate;
+        this.collisionsThisUpdate = this.collisionsLastUpdate;
+        this.collisionsThisUpdate.forEach((collisions, side) => collisions.clear());
+        this.collisionsLastUpdate = tmp;
     }
     public afterCollisions() {
-        this.newCollisions.forEach((collisions, side) => {
+        this.collisionsThisUpdate.forEach((collisions, side) => {
             collisions.forEach((collision) => {
-                if (!this.lastCollisions.get(side).has(collision)) {
+                if (!this.collisionsLastUpdate.get(side).has(collision)) {
                     this.onCollisionStart(side, collision);
                     collision.onCollisionStart(side.flip(), this);
                 } else {
@@ -624,19 +632,22 @@ class PhysBox extends BoundBox {
                 }
             });
         });
-        this.lastCollisions.forEach((collisions, side) => {
+        this.collisionsLastUpdate.forEach((collisions, side) => {
             collisions.forEach((collision) => {
-                if (!this.newCollisions.get(side).has(collision)) {
+                if (!this.collisionsThisUpdate.get(side).has(collision)) {
                     this.onCollisionStop(side, collision);
                     collision.onCollisionStop(side.flip(), this);
                 }
             });
         });
     }
+
     protected notifyOfCollision(side: Sides, physBox: PhysBox) {
-        this.newCollisions.get(side).add(physBox);
+        this.collisionsThisUpdate.get(side).add(physBox);
     }
     
+    protected getCollisions(side) : Set<PhysBox> { return this.collisionsLastUpdate.get(side); }
+
     public resolveCollisions(t : number) {
         if (this.frozen || !this.active)
             return;
@@ -649,7 +660,7 @@ class PhysBox extends BoundBox {
                 let hits = collisions.sort((b, a) => a.getSide(Sides.Top) - b.getSide(Sides.Top));
                 for (let i = 0; i < hits.length; i++) {
                     if (hits[i].getPos().y == hits[0].getPos().y) {
-                        this.newCollisions.get(Sides.Bottom).add(hits[i]);
+                        this.collisionsThisUpdate.get(Sides.Bottom).add(hits[i]);
                         hits[i].notifyOfCollision(Sides.Top, this);
                         this.setSide(Sides.Bottom, hits[i].getSide(Sides.Top) + 0.001);
                     } else break;
@@ -658,7 +669,7 @@ class PhysBox extends BoundBox {
                 let hits = collisions.sort((a, b) => a.getSide(Sides.Bottom) - b.getSide(Sides.Bottom));
                 for (let i = 0; i < hits.length; i++) {
                     if (hits[i].getPos().y == hits[0].getPos().y) {
-                        this.newCollisions.get(Sides.Top).add(hits[i]);
+                        this.collisionsThisUpdate.get(Sides.Top).add(hits[i]);
                         hits[i].notifyOfCollision(Sides.Bottom, this);
                         this.setSide(Sides.Top, hits[i].getSide(Sides.Bottom) - 0.001);
                     } else break;
@@ -674,7 +685,7 @@ class PhysBox extends BoundBox {
                 let hits = collisions.sort((b, a) => a.getSide(Sides.Right) - b.getSide(Sides.Right));
                 for (let i = 0; i < hits.length; i++) {
                     if (hits[i].getPos().y == hits[0].getPos().y) {
-                        this.newCollisions.get(Sides.Left).add(hits[i]);
+                        this.collisionsThisUpdate.get(Sides.Left).add(hits[i]);
                         hits[i].notifyOfCollision(Sides.Right, this);
                         this.setSide(Sides.Left, hits[i].getSide(Sides.Right) + 0.001);
                     } else break;
@@ -683,7 +694,7 @@ class PhysBox extends BoundBox {
                 let hits = collisions.sort((a, b) => a.getSide(Sides.Left) - b.getSide(Sides.Left));
                 for (let i = 0; i < hits.length; i++) {
                     if (hits[i].getPos().y == hits[0].getPos().y) {
-                        this.newCollisions.get(Sides.Right).add(hits[i]);
+                        this.collisionsThisUpdate.get(Sides.Right).add(hits[i]);
                         hits[i].notifyOfCollision(Sides.Left, this);
                         this.setSide(Sides.Right, hits[i].getSide(Sides.Left) - 0.001);
                     } else break;
@@ -699,7 +710,7 @@ class PhysBox extends BoundBox {
                 let hits = collisions.sort((b, a) => a.getSide(Sides.Forward) - b.getSide(Sides.Forward));
                 for (let i = 0; i < hits.length; i++) {
                     if (hits[i].getPos().y == hits[0].getPos().y) {
-                        this.newCollisions.get(Sides.Back).add(hits[i]);
+                        this.collisionsThisUpdate.get(Sides.Back).add(hits[i]);
                         hits[i].notifyOfCollision(Sides.Forward, this);
                         this.setSide(Sides.Back, hits[i].getSide(Sides.Forward) + 0.0001);
                     } else break;
@@ -708,7 +719,7 @@ class PhysBox extends BoundBox {
                 let hits = collisions.sort((a, b) => a.getSide(Sides.Back) - b.getSide(Sides.Back));
                 for (let i = 0; i < hits.length; i++) {
                     if (hits[i].getPos().y == hits[0].getPos().y) {
-                        this.newCollisions.get(Sides.Forward).add(hits[i]);
+                        this.collisionsThisUpdate.get(Sides.Forward).add(hits[i]);
                         hits[i].notifyOfCollision(Sides.Back, this);
                         this.setSide(Sides.Forward, hits[i].getSide(Sides.Back) - 0.0001);
                     } else break;
@@ -720,17 +731,15 @@ class PhysBox extends BoundBox {
     private active: boolean = true;
     private velocity: BABYLON.Vector3 = BABYLON.Vector3.Zero();
     private disposed: boolean = false;
-    private static frozenVelocity: BABYLON.Vector3 = BABYLON.Vector3.Zero();
 
-    protected getCollisions(side) : Set<PhysBox> { return this.lastCollisions.get(side); }
+    // CONSTANTS
+    private static FROZEN_VELOCITY: BABYLON.Vector3 = BABYLON.Vector3.Zero();
+    public static MAXIMUM_HEIGHT: number = 5;
 
-    public static MAX_Y_SIZE: number = 5;
-
-    // collisions on 6 sides of physbox
-    private lastCollisions: Map<Sides, Set<PhysBox>> = new Map([
+    private collisionsLastUpdate: Map<Sides, Set<PhysBox>> = new Map([
         [Sides.Left, new Set<PhysBox>()], [Sides.Right, new Set<PhysBox>()], [Sides.Top, new Set<PhysBox>()], [Sides.Bottom, new Set<PhysBox>()], [Sides.Forward, new Set<PhysBox>()], [Sides.Back, new Set<PhysBox>()]
     ]);
-    private newCollisions: Map<Sides, Set<PhysBox>> = new Map([
+    private collisionsThisUpdate: Map<Sides, Set<PhysBox>> = new Map([
         [Sides.Left, new Set<PhysBox>()], [Sides.Right, new Set<PhysBox>()], [Sides.Top, new Set<PhysBox>()], [Sides.Bottom, new Set<PhysBox>()], [Sides.Forward, new Set<PhysBox>()], [Sides.Back, new Set<PhysBox>()]
     ]);
 }
@@ -857,21 +866,21 @@ class Player extends PhysBox {
     public static LoadResources() : Promise<any> {
         return Promise.all([
             new Promise((resolve) => {
-                Player.sndJump = new BABYLON.Sound("", "https://raw.githubusercontent.com/lattesipper/endlessplatformer/master/resources/sounds/jump.wav", scene, resolve, {
+                Player.SOUND_JUMP = new BABYLON.Sound("", "https://raw.githubusercontent.com/lattesipper/endlessplatformer/master/resources/sounds/jump.wav", scene, resolve, {
                     loop: false,
                     autoplay:  false,
                     volume: 0.5
                 });
             }),
             new Promise((resolve) => {
-                Player.sndHitHead = new BABYLON.Sound("", "https://raw.githubusercontent.com/lattesipper/endlessplatformer/master/resources/sounds/hitHead.wav", scene, resolve, {
+                Player.SOUND_HIT_HEAD = new BABYLON.Sound("", "https://raw.githubusercontent.com/lattesipper/endlessplatformer/master/resources/sounds/hitHead.wav", scene, resolve, {
                     loop: false,
                     autoplay:  false,
                     volume: 0.5
                 });
             }),
             new Promise((resolve) => {
-                Player.sndDeath = new BABYLON.Sound("", "https://raw.githubusercontent.com/lattesipper/endlessplatformer/master/resources/sounds/death.wav", scene, resolve, {
+                Player.SOUND_DEATH = new BABYLON.Sound("", "https://raw.githubusercontent.com/lattesipper/endlessplatformer/master/resources/sounds/death.wav", scene, resolve, {
                     loop: false,
                     autoplay:  false,
                     volume: 0.5
@@ -884,7 +893,7 @@ class Player extends PhysBox {
                     testMaterial.ambientColor = new BABYLON.Color3(1, 1, 1);
                     meshes[0].material = testMaterial;
                     meshes[0].isVisible = false;
-                    Player.templateMesh = <BABYLON.Mesh>(meshes[0]);
+                    Player.MESH = <BABYLON.Mesh>(meshes[0]);
                     resolve();
                 });
             })
@@ -898,7 +907,7 @@ class Player extends PhysBox {
     public constructor() {
         super();
 
-        this.mesh = Player.templateMesh.createInstance('');
+        this.mesh = Player.MESH.createInstance('');
         this.mesh.position = this.getPos();
 
         const particleSystem = new BABYLON.ParticleSystem("particles", 2000, scene);
@@ -915,7 +924,7 @@ class Player extends PhysBox {
         particleSystem.maxLifeTime = 0.6;
         particleSystem.emitRate = 2000;
         particleSystem.blendMode = BABYLON.ParticleSystem.BLENDMODE_ONEONE;
-        particleSystem.gravity = new BABYLON.Vector3(0, 0, 0);
+        particleSystem.GRAVITY = new BABYLON.Vector3(0, 0, 0);
         particleSystem.direction1 = new BABYLON.Vector3(-1, -1, -1);
         particleSystem.direction2 = new BABYLON.Vector3(1, 1, 1);
         particleSystem.minAngularSpeed = 0;
@@ -935,13 +944,13 @@ class Player extends PhysBox {
     public kill() {
         this.disable();
         this.explosionParticleSystem.start();
-        Player.sndDeath.play();
+        Player.SOUND_DEATH.play();
         game.beginSpactorMode();
         setTimeout(() => this.explosionParticleSystem.stop(), 150);
     }
     public onCollisionStart(side: Sides, physBox: PhysBox) { 
-        if (!Player.sndHitHead.isPlaying && side == Sides.Top && physBox instanceof FallBox)
-            Player.sndHitHead.play();
+        if (!Player.SOUND_HIT_HEAD.isPlaying && side == Sides.Top && physBox instanceof FallBox)
+            Player.SOUND_HIT_HEAD.play();
     }
 
     public determineVelocities() {
@@ -979,84 +988,84 @@ class Player extends PhysBox {
                 count += this.getCollisions(Sides.Left).size;
                 this.getCollisions(Sides.Left).forEach((physBox) => avgYSpeed += physBox.getVelocity().y);
                 if (InputManager.getInstance().isKeyPressed(' ')) {
-                    this.getVelocity().x = Player.sideXZImpulse; this.getVelocity().y = Player.sideJumpImpulse;
-                    if (!Player.sndHitHead.isPlaying) Player.sndJump.play();
+                    this.getVelocity().x = Player.SIDE_XZ_IMPULSE; this.getVelocity().y = Player.SIDE_JUMP_IMPULSE;
+                    if (!Player.SOUND_HIT_HEAD.isPlaying) Player.SOUND_JUMP.play();
                 }
             }
             if (this.getCollisions(Sides.Right).size) {
                 count += this.getCollisions(Sides.Right).size;
                 this.getCollisions(Sides.Right).forEach((physBox) => avgYSpeed += physBox.getVelocity().y);
                 if (InputManager.getInstance().isKeyPressed(' ')) {
-                    this.getVelocity().x = -Player.sideXZImpulse; this.getVelocity().y = Player.sideJumpImpulse;
-                    if (!Player.sndHitHead.isPlaying) Player.sndJump.play();
+                    this.getVelocity().x = -Player.SIDE_XZ_IMPULSE; this.getVelocity().y = Player.SIDE_JUMP_IMPULSE;
+                    if (!Player.SOUND_HIT_HEAD.isPlaying) Player.SOUND_JUMP.play();
                 }
             }
             if (this.getCollisions(Sides.Forward).size) {
                 count += this.getCollisions(Sides.Forward).size;
                 this.getCollisions(Sides.Forward).forEach((physBox) => avgYSpeed += physBox.getVelocity().y);
                 if (InputManager.getInstance().isKeyPressed(' ')) {
-                    this.getVelocity().z = -Player.sideXZImpulse; this.getVelocity().y = Player.sideJumpImpulse;
-                    if (!Player.sndHitHead.isPlaying) Player.sndJump.play();
+                    this.getVelocity().z = -Player.SIDE_XZ_IMPULSE; this.getVelocity().y = Player.SIDE_JUMP_IMPULSE;
+                    if (!Player.SOUND_HIT_HEAD.isPlaying) Player.SOUND_JUMP.play();
                 }
             }
             if (this.getCollisions(Sides.Back).size) {
                 count += this.getCollisions(Sides.Back).size;
                 this.getCollisions(Sides.Back).forEach((physBox) => avgYSpeed += physBox.getVelocity().y);
                 if (InputManager.getInstance().isKeyPressed(' ')) {
-                    this.getVelocity().z = Player.sideXZImpulse; this.getVelocity().y = Player.sideJumpImpulse;
-                    if (!Player.sndHitHead.isPlaying) Player.sndJump.play();
+                    this.getVelocity().z = Player.SIDE_XZ_IMPULSE; this.getVelocity().y = Player.SIDE_JUMP_IMPULSE;
+                    if (!Player.SOUND_HIT_HEAD.isPlaying) Player.SOUND_JUMP.play();
                 }
             }
         }
         if (count && !InputManager.getInstance().isKeyPressed(' ')) {
             // sliding, set players velocity to slide speed
             avgYSpeed /= count;
-            avgYSpeed -= Player.sideSlideSpeed;
+            avgYSpeed -= Player.SIDE_SLIDE_SPEED;
             this.getVelocity().y = avgYSpeed;
         } else {
-            // not sliding, apply gravity as normal
-            this.getVelocity().y = Math.max(this.getVelocity().y - Player.gravity, -Player.maxVerticalSpeed);
+            // not sliding, apply GRAVITY as normal
+            this.getVelocity().y = Math.max(this.getVelocity().y - Player.GRAVITY, -Player.MAX_Y_SPEED);
         }
 
         // grounded, apply movement velocity instantaneously
         if (this.getCollisions(Sides.Bottom).size) {
             if (InputManager.getInstance().isKeyPressed(wKey)) {
-                this.getVelocity().z = Player.moveSpeed;
+                this.getVelocity().z = Player.GROUND_MOVE_SPEED;
             } else if (InputManager.getInstance().isKeyPressed(sKey)) {
-                this.getVelocity().z = -Player.moveSpeed;
+                this.getVelocity().z = -Player.GROUND_MOVE_SPEED;
             } else {
                 this.getVelocity().z = 0;
             }
             if (InputManager.getInstance().isKeyPressed(aKey)) {
-                this.getVelocity().x = -Player.moveSpeed;
+                this.getVelocity().x = -Player.GROUND_MOVE_SPEED;
             } else if (InputManager.getInstance().isKeyPressed(dKey)) {
-                this.getVelocity().x = Player.moveSpeed;
+                this.getVelocity().x = Player.GROUND_MOVE_SPEED;
             } else {
                 this.getVelocity().x = 0;
             }
             if (InputManager.getInstance().isKeyPressed(' ')) {
-                if (!Player.sndHitHead.isPlaying) Player.sndJump.play();
-                this.getVelocity().y = Player.jumpImpulse;
+                if (!Player.SOUND_HIT_HEAD.isPlaying) Player.SOUND_JUMP.play();
+                this.getVelocity().y = Player.JUMP_IMPULSE;
             }    
         } 
         // in-air, apply movement velocity through acceleration
         else {
             if (InputManager.getInstance().isKeyPressed(wKey)) {
-                this.getVelocity().z = Math.min(this.getVelocity().z + Player.airMoveAcceleration, Player.moveSpeed);
+                this.getVelocity().z = Math.min(this.getVelocity().z + Player.AIR_MOVE_ACCELERATION, Player.GROUND_MOVE_SPEED);
             } else if (InputManager.getInstance().isKeyPressed(sKey)) {
-                this.getVelocity().z = Math.max(this.getVelocity().z - Player.airMoveAcceleration, -Player.moveSpeed);
+                this.getVelocity().z = Math.max(this.getVelocity().z - Player.AIR_MOVE_ACCELERATION, -Player.GROUND_MOVE_SPEED);
             } else {
-                this.getVelocity().z = (Math.abs(this.getVelocity().z) < Player.airMoveAcceleration) ? 0 : this.getVelocity().z + Player.airMoveAcceleration * Math.sign(this.getVelocity().z) * -1;
+                this.getVelocity().z = (Math.abs(this.getVelocity().z) < Player.AIR_MOVE_ACCELERATION) ? 0 : this.getVelocity().z + Player.AIR_MOVE_ACCELERATION * Math.sign(this.getVelocity().z) * -1;
             }
             if (InputManager.getInstance().isKeyPressed(aKey)) {
-                this.getVelocity().x = Math.max(this.getVelocity().x - Player.airMoveAcceleration, -Player.moveSpeed);
+                this.getVelocity().x = Math.max(this.getVelocity().x - Player.AIR_MOVE_ACCELERATION, -Player.GROUND_MOVE_SPEED);
             } else if (InputManager.getInstance().isKeyPressed(dKey)) {
-                this.getVelocity().x = Math.min(this.getVelocity().x + Player.airMoveAcceleration, Player.moveSpeed);
+                this.getVelocity().x = Math.min(this.getVelocity().x + Player.AIR_MOVE_ACCELERATION, Player.GROUND_MOVE_SPEED);
             } else {
-                this.getVelocity().x = (Math.abs(this.getVelocity().x) < Player.airMoveAcceleration) ? 0 : this.getVelocity().x + Player.airMoveAcceleration * Math.sign(this.getVelocity().x) * -1;
+                this.getVelocity().x = (Math.abs(this.getVelocity().x) < Player.AIR_MOVE_ACCELERATION) ? 0 : this.getVelocity().x + Player.AIR_MOVE_ACCELERATION * Math.sign(this.getVelocity().x) * -1;
             }
             if (InputManager.getInstance().isKeyPressed('e')) {
-                this.getVelocity().y = -Player.crushImpulse;
+                this.getVelocity().y = -Player.CRUSH_IMPULSE;
             }
         }
     }
@@ -1084,28 +1093,29 @@ class Player extends PhysBox {
         // gameplayContainer.getChildByName('currentheight').text = Math.round(this.getPos().y) + "ft";
         // gameplayContainer.getChildByName('maxheight').text = Math.round(this.bestHeight) + "ft";
     }
+
+    // RESOURCES
+    private static SOUND_JUMP: BABYLON.Sound;
+    private static SOUND_HIT_HEAD: BABYLON.Sound;
+    private static SOUND_DEATH: BABYLON.Sound;
+    private static MESH: BABYLON.Mesh;
+
+    // CONSTANTS
+    //  General movement
+    private static GROUND_MOVE_SPEED = 0.1;
+    private static AIR_MOVE_ACCELERATION = 0.01;
+    //  Jump / Crush / Slide
+    private static JUMP_IMPULSE = 0.3;
+    private static CRUSH_IMPULSE = 0.5;
+    private static SIDE_JUMP_IMPULSE = 0.4;
+    private static SIDE_XZ_IMPULSE = 0.2;
+    private static SIDE_SLIDE_SPEED = 0.01;
+    // Gravity & Max speed
+    private static GRAVITY = 0.008;
+    private static MAX_Y_SPEED = 0.5;
+
     private mesh: BABYLON.AbstractMesh;
-
     private bestHeight: number = 0;
-
-    private static moveSpeed = 0.1;
-    private static airMoveAcceleration = 0.01;
-
-    private static jumpImpulse = 0.3;
-    private static crushImpulse = 0.5;
-
-    private static sideJumpImpulse = 0.4;
-    private static sideXZImpulse = 0.2;
-    
-    private static gravity = 0.008;
-    private static sideSlideSpeed = 0.01;
-
-    private static maxVerticalSpeed = 0.5;
-
-    private static sndJump: BABYLON.Sound;
-    private static sndHitHead: BABYLON.Sound;
-    private static sndDeath: BABYLON.Sound;
-    private static templateMesh: BABYLON.Mesh;
     private explosionParticleSystem: BABYLON.ParticleSystem;
 }
 
