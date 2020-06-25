@@ -351,9 +351,17 @@ class Game {
         return Promise.all([
             new Promise((resolve) => {
                 Game.BACKGROUND_MUSIC = new BABYLON.Sound("", "https://raw.githubusercontent.com/lattesipper/endlessplatformer/master/resources/music/dreamsofabove.mp3", scene, resolve, {
-                    loop: true,
-                    autoplay:  false,
-                    volume: 0.5
+                    loop: true, autoplay: false, volume: 0.5
+                });
+            }),
+            new Promise((resolve) => {
+                Game.SOUND_PAUSE_IN = new BABYLON.Sound("", "https://raw.githubusercontent.com/lattesipper/endlessplatformer/master/resources/sounds/pauseIn.wav", scene, resolve, {
+                    loop: false, autoplay: false, volume: 0.5
+                });
+            }),
+            new Promise((resolve) => {
+                Game.SOUND_PAUSE_OUT = new BABYLON.Sound("", "https://raw.githubusercontent.com/lattesipper/endlessplatformer/master/resources/music/pauseOut.wav", scene, resolve, {
+                    loop: false, autoplay: false, volume: 0.5
                 });
             }),
             new Promise((resolve) => {
@@ -373,17 +381,26 @@ class Game {
             })
         ]);
     }
-    public beginSpactorMode() {
-        // remain in Playing mode for 3 seconds, before switching to spectator
-        setTimeout(() => {
-            this.mode = GameMode.Spectating;
-            this.lava.position.y = -10;
-            this.deathDelayOver = true;
-            gameplayContainer.isVisible = false;
-            gameOverContainer.isVisible = true;
-            camera.setY(0);
-        }, 3000);
-        this.canPause = false;
+    private changeMode(mode: GameMode) {
+        switch(mode) {
+            case GameMode.Playing:
+                gameOverContainer.isVisible = false;
+                gameplayContainer.isVisible = true;
+                this.mode = GameMode.Playing;
+                break;
+            case GameMode.Spectating:
+                console.assert(this.mode == GameMode.Playing && this.canPause);
+                setTimeout(() => {
+                    gameplayContainer.isVisible = false;
+                    gameOverContainer.isVisible = true;
+                    camera.setY(0);
+                    this.lava.position.y = -10;
+                    this.deathDelayOver = true;
+                    this.mode = GameMode.Spectating;
+                }, 3000);
+                this.canPause = false;
+                break;
+        }
     }
     private update() {
         if (!this.running)
@@ -441,9 +458,11 @@ class Game {
                             if (this.running) {
                                 pauseContainer.isVisible = true;
                                 this.running = false;
+                                Game.SOUND_PAUSE_IN.play();
                             } else {
                                 pauseContainer.isVisible = false;
                                 this.running = true;
+                                Game.SOUND_PAUSE_OUT.play();
                             }
                             break;
                     }
@@ -469,6 +488,11 @@ class Game {
         const player = new Player();
         player.setPos(new BABYLON.Vector3(0, 7, 0));
         this.addPhysBox(player);
+        this.callbackFunctions.push(
+            player.onEvent('death', () => {
+                this.changeMode(GameMode.Spectating);
+            })
+        );
         this.player = player;
 
         // play background music
@@ -534,6 +558,8 @@ class Game {
 
     // RESOURCES
     private static BACKGROUND_MUSIC: BABYLON.Sound;
+    private static SOUND_PAUSE_IN: BABYLON.Sound;
+    private static SOUND_PAUSE_OUT: BABYLON.Sound;
     private static MESH_LAVA: BABYLON.Mesh;
     // GAME CONSTANTS
     private static PLAYER_DISTANCE_FOR_FAST_LAVA: number = 75;
@@ -945,7 +971,7 @@ class Player extends PhysBox {
         this.disable();
         this.explosionParticleSystem.start();
         Player.SOUND_DEATH.play();
-        game.beginSpactorMode();
+        this.fire('death', true);
         setTimeout(() => this.explosionParticleSystem.stop(), 150);
     }
     public onCollisionStart(side: Sides, physBox: PhysBox) { 
