@@ -358,7 +358,7 @@ window.addEventListener('DOMContentLoaded', () => {
                     });
                 }),
                 new Promise((resolve) => {
-                    Game.SOUND_PAUSE_OUT = new BABYLON.Sound("", "https://raw.githubusercontent.com/lattesipper/endlessplatformer/master/resources/music/pauseOut.wav", scene, resolve, {
+                    Game.SOUND_PAUSE_OUT = new BABYLON.Sound("", "https://raw.githubusercontent.com/lattesipper/endlessplatformer/master/resources/sounds/pauseOut.wav", scene, resolve, {
                         loop: false, autoplay: false, volume: 0.5
                     });
                 }),
