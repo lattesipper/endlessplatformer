@@ -393,6 +393,9 @@ class Game {
                 Game.SOUND_DRUMROLL_IN = new BABYLON.Sound("", "https://raw.githubusercontent.com/lattesipper/endlessplatformer/master/resources/sounds/drumrollStart.mp3", scene, resolve, {
                     loop: false, autoplay: false, volume: 0.5
                 });
+                Game.SOUND_DRUMROLL_IN.onEndedObservable.add(() => {
+                    Game.SOUND_DRUMROLL_REPEAT.play();
+                });
             }),
             new Promise((resolve) => {
                 Game.SOUND_DRUMROLL_REPEAT = new BABYLON.Sound("", "https://raw.githubusercontent.com/lattesipper/endlessplatformer/master/resources/sounds/drumrollRepeat.mp3", scene, resolve, {
@@ -433,8 +436,8 @@ class Game {
                     this.lava.position.y = -10;
                     this.deathDelayOver = true;
                     this.mode = GameMode.Spectating;
+                    Game.SOUND_DRUMROLL_IN.play();
                 }, 3000);
-                Game.SOUND_DRUMROLL_IN.play();
                 this.canPause = false;
                 break;
         }
@@ -474,9 +477,10 @@ class Game {
                         this.cameraSpeed -= 0.016;
                     }
                     camera.setY(camera.getY() + this.cameraSpeed);
-                    if (camera.getY() >= this.player.getPos().y) {
+                    if (this.cameraSpeed <= 0) {
                         this.towerFlyByComplte = true;
-                        camera.setY(this.player.getPos().y);
+                        Game.SOUND_DRUMROLL_IN.stop();
+                        Game.SOUND_DRUMROLL_REPEAT.stop();
                     }
                 }
                 break;
