@@ -295,6 +295,8 @@ class GameCamera {
     public setY(y: number) { this.node.position.y = y }
     public getY() : number { return this.node.position.y }
     public setAlpha(alpha: number) { this.camera.alpha = alpha; }
+    public setBeta(beta: number) { this.camera.beta = beta; }
+    public setRadius(radius: number) { this.camera.radius = radius;}
     public getAlpha() : number { return this.camera.alpha; }
     public constructor() {
         // use an arc-rotate camera
@@ -390,13 +392,13 @@ class Game {
                 });
             }),
             new Promise((resolve) => {
-                Game.SOUND_DRUMROLL_REPEAT = new BABYLON.Sound("", "https://raw.githubusercontent.com/lattesipper/endlessplatformer/master/resources/sounds/drumrollRepeat.mp3", scene, resolve, {
+                Game.SOUND_DRUMROLL_REPEAT = new BABYLON.Sound("", "https://raw.githubusercontent.com/lattesipper/endlessplatformer/master/resources/sounds/drumroll.mp3", scene, resolve, {
                     loop: false, autoplay: false, volume: 0.5
                 });
             }),
             new Promise((resolve) => {
                 Game.SOUND_DRUMROLL_STOP = new BABYLON.Sound("", "https://raw.githubusercontent.com/lattesipper/endlessplatformer/master/resources/sounds/drumrollStop.mp3", scene, resolve, {
-                    loop: true, autoplay: false, volume: 0.5
+                    loop: false, autoplay: false, volume: 0.5
                 });
             }),
             new Promise((resolve) => {
@@ -430,9 +432,11 @@ class Game {
                     gameplayContainer.isVisible = false;
                     gameOverContainer.isVisible = true;
                     camera.setY(0);
-                    this.lava.position.y = -10;
+                    this.lava.position.y = -15;
                     this.deathDelayOver = true;
                     this.mode = GameMode.Spectating;
+                    camera.setBeta(Math.PI / 2);
+                    camera.setRadius(50);
                     Game.SOUND_DRUMROLL_REPEAT.play();
                 }, 3000);
                 this.canPause = false;
@@ -474,7 +478,7 @@ class Game {
                         this.cameraSpeed -= 0.016;
                     }
                     camera.setY(camera.getY() + this.cameraSpeed);
-                    if (this.cameraSpeed <= 0) {
+                    if (this.cameraSpeed <= 0 || (camera.getY() >= this.player.getPos().y)) {
                         this.towerFlyByComplte = true;
                         Game.SOUND_DRUMROLL_REPEAT.stop();
                         Game.SOUND_DRUMROLL_STOP.play();
@@ -530,7 +534,7 @@ class Game {
         bottomBox
                 .freeze()
                 .setPos(new BABYLON.Vector3(0, 0, 0))
-                .setSize(new BABYLON.Vector3(10, 10, 10));
+                .setSize(new BABYLON.Vector3(10, 2, 10));
         this.addPhysBox(bottomBox);
 
         // create initial cube cluster
@@ -538,7 +542,8 @@ class Game {
 
         // all is ready, create the player
         const player = new Player();
-        player.setPos(new BABYLON.Vector3(0, 7, 0));
+        player.setPos(new BABYLON.Vector3(0, 0, 0));
+        player.setSide(Sides.Bottom, bottomBox.getSide(Sides.Top));
         this.addPhysBox(player);
         this.callbackFunctions.push(
             player.onEvent('death', () => {
@@ -552,6 +557,8 @@ class Game {
         Game.BACKGROUND_MUSIC.setVolume(0.5);
         Game.BACKGROUND_MUSIC.play();
         camera.resetRotationindex();
+        camera.setBeta(0.65);
+        camera.setRadius(25);
     }
     public createNewCluster(cubeCount, startY) { this.fallboxClusters.push(new FallBoxCluster(cubeCount, startY)); }
 
