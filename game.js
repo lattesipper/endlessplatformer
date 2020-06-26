@@ -389,15 +389,12 @@ window.addEventListener('DOMContentLoaded', () => {
                     });
                 }),
                 new Promise((resolve) => {
-                    Game.SOUND_DRUMROLL_IN = new BABYLON.Sound("", "https://raw.githubusercontent.com/lattesipper/endlessplatformer/master/resources/sounds/drumrollStart.mp3", scene, resolve, {
+                    Game.SOUND_DRUMROLL_REPEAT = new BABYLON.Sound("", "https://raw.githubusercontent.com/lattesipper/endlessplatformer/master/resources/sounds/drumrollRepeat.mp3", scene, resolve, {
                         loop: false, autoplay: false, volume: 0.5
-                    });
-                    Game.SOUND_DRUMROLL_IN.onEndedObservable.add(() => {
-                        Game.SOUND_DRUMROLL_REPEAT.play();
                     });
                 }),
                 new Promise((resolve) => {
-                    Game.SOUND_DRUMROLL_REPEAT = new BABYLON.Sound("", "https://raw.githubusercontent.com/lattesipper/endlessplatformer/master/resources/sounds/drumrollRepeat.mp3", scene, resolve, {
+                    Game.SOUND_DRUMROLL_STOP = new BABYLON.Sound("", "https://raw.githubusercontent.com/lattesipper/endlessplatformer/master/resources/sounds/drumrollStop.mp3", scene, resolve, {
                         loop: true, autoplay: false, volume: 0.5
                     });
                 }),
@@ -435,7 +432,7 @@ window.addEventListener('DOMContentLoaded', () => {
                         this.lava.position.y = -10;
                         this.deathDelayOver = true;
                         this.mode = GameMode.Spectating;
-                        Game.SOUND_DRUMROLL_IN.play();
+                        Game.SOUND_DRUMROLL_REPEAT.play();
                     }, 3000);
                     this.canPause = false;
                     break;
@@ -490,8 +487,8 @@ window.addEventListener('DOMContentLoaded', () => {
                         camera.setY(camera.getY() + this.cameraSpeed);
                         if (this.cameraSpeed <= 0) {
                             this.towerFlyByComplte = true;
-                            Game.SOUND_DRUMROLL_IN.stop();
                             Game.SOUND_DRUMROLL_REPEAT.stop();
+                            Game.SOUND_DRUMROLL_STOP.play();
                         }
                     }
                     break;

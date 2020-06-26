@@ -390,15 +390,12 @@ class Game {
                 });
             }),
             new Promise((resolve) => {
-                Game.SOUND_DRUMROLL_IN = new BABYLON.Sound("", "https://raw.githubusercontent.com/lattesipper/endlessplatformer/master/resources/sounds/drumrollStart.mp3", scene, resolve, {
+                Game.SOUND_DRUMROLL_REPEAT = new BABYLON.Sound("", "https://raw.githubusercontent.com/lattesipper/endlessplatformer/master/resources/sounds/drumrollRepeat.mp3", scene, resolve, {
                     loop: false, autoplay: false, volume: 0.5
-                });
-                Game.SOUND_DRUMROLL_IN.onEndedObservable.add(() => {
-                    Game.SOUND_DRUMROLL_REPEAT.play();
                 });
             }),
             new Promise((resolve) => {
-                Game.SOUND_DRUMROLL_REPEAT = new BABYLON.Sound("", "https://raw.githubusercontent.com/lattesipper/endlessplatformer/master/resources/sounds/drumrollRepeat.mp3", scene, resolve, {
+                Game.SOUND_DRUMROLL_STOP = new BABYLON.Sound("", "https://raw.githubusercontent.com/lattesipper/endlessplatformer/master/resources/sounds/drumrollStop.mp3", scene, resolve, {
                     loop: true, autoplay: false, volume: 0.5
                 });
             }),
@@ -436,7 +433,7 @@ class Game {
                     this.lava.position.y = -10;
                     this.deathDelayOver = true;
                     this.mode = GameMode.Spectating;
-                    Game.SOUND_DRUMROLL_IN.play();
+                    Game.SOUND_DRUMROLL_REPEAT.play();
                 }, 3000);
                 this.canPause = false;
                 break;
@@ -479,8 +476,8 @@ class Game {
                     camera.setY(camera.getY() + this.cameraSpeed);
                     if (this.cameraSpeed <= 0) {
                         this.towerFlyByComplte = true;
-                        Game.SOUND_DRUMROLL_IN.stop();
                         Game.SOUND_DRUMROLL_REPEAT.stop();
+                        Game.SOUND_DRUMROLL_STOP.play();
                     }
                 }
                 break;
@@ -617,8 +614,8 @@ class Game {
     private static BACKGROUND_MUSIC: BABYLON.Sound;
     private static SOUND_PAUSE_IN: BABYLON.Sound;
     private static SOUND_PAUSE_OUT: BABYLON.Sound;
-    private static SOUND_DRUMROLL_IN: BABYLON.Sound;
     private static SOUND_DRUMROLL_REPEAT: BABYLON.Sound;
+    private static SOUND_DRUMROLL_STOP: BABYLON.Sound;
     private static MESH_LAVA: BABYLON.Mesh;
     // GAME CONSTANTS
     private static PLAYER_DISTANCE_FOR_FAST_LAVA: number = 75;
