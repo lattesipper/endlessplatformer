@@ -1,4 +1,4 @@
-//import * as BABYLON from 'babylonjs';
+import * as BABYLON from 'babylonjs';
 window.addEventListener('DOMContentLoaded', () => {
     // Create canvas and engine.
     const canvas = (document.getElementById('renderCanvas'));
@@ -21,6 +21,29 @@ window.addEventListener('DOMContentLoaded', () => {
     });
     // Game instance
     let game;
+    class UtilityFunctions {
+        static fadeSound(sound, fadeTimeInSeconds, targetVolume, easingFunction = (t) => t, onDone = () => { }) {
+            let t = 0;
+            const originalVolume = sound.getVolume();
+            const diffVolume = targetVolume - originalVolume;
+            const callback = () => {
+                t += (1 / (60 * fadeTimeInSeconds));
+                if (t >= 1) {
+                    t = 1;
+                    sound.setVolume(targetVolume);
+                    scene.onBeforeRenderObservable.removeCallback(callback);
+                    onDone();
+                }
+                else {
+                    sound.setVolume(originalVolume + easingFunction(t) * diffVolume);
+                }
+            };
+            scene.onBeforeRenderObservable.add(callback);
+        }
+        static fadeOutSound(sound, fadeOutTimeInSeconds, easingFunction = (t) => t) {
+            UtilityFunctions.fadeSound(sound, fadeOutTimeInSeconds, 0, easingFunction);
+        }
+    }
     // GUI
     const gui = BABYLON.GUI.AdvancedDynamicTexture.CreateFullscreenUI("UI");
     gui.idealWidth = 1080;
@@ -335,6 +358,7 @@ window.addEventListener('DOMContentLoaded', () => {
     // Game class, responsible for managing contained phys-objects
     class Game {
         constructor() {
+            this.cameraSpeed = 0;
             this.mode = GameMode.Playing;
             this.deathDelayOver = false;
             this.canPause = true;
@@ -344,6 +368,8 @@ window.addEventListener('DOMContentLoaded', () => {
             this.physBoxesSortedY = [];
             this.physBoxToYIndex = new Map();
             this.updateCutoffYIndex = 0;
+            this.testT = 0;
+            this.towerFlyByComplte = false;
         }
         static LoadResources() {
             return Promise.all([
@@ -360,6 +386,16 @@ window.addEventListener('DOMContentLoaded', () => {
                 new Promise((resolve) => {
                     Game.SOUND_PAUSE_OUT = new BABYLON.Sound("", "https://raw.githubusercontent.com/lattesipper/endlessplatformer/master/resources/sounds/pauseOut.wav", scene, resolve, {
                         loop: false, autoplay: false, volume: 0.5
+                    });
+                }),
+                new Promise((resolve) => {
+                    Game.SOUND_DRUMROLL_IN = new BABYLON.Sound("", "https://raw.githubusercontent.com/lattesipper/endlessplatformer/master/resources/sounds/drumrollStart.mp3", scene, resolve, {
+                        loop: false, autoplay: false, volume: 0.5
+                    });
+                }),
+                new Promise((resolve) => {
+                    Game.SOUND_DRUMROLL_REPEAT = new BABYLON.Sound("", "https://raw.githubusercontent.com/lattesipper/endlessplatformer/master/resources/sounds/drumrollRepeat.mp3", scene, resolve, {
+                        loop: true, autoplay: false, volume: 0.5
                     });
                 }),
                 new Promise((resolve) => {
@@ -388,6 +424,7 @@ window.addEventListener('DOMContentLoaded', () => {
                     break;
                 case GameMode.Spectating:
                     console.assert(this.mode == GameMode.Playing && this.canPause);
+                    UtilityFunctions.fadeOutSound(Game.BACKGROUND_MUSIC, 1);
                     setTimeout(() => {
                         gameplayContainer.isVisible = false;
                         gameOverContainer.isVisible = true;
@@ -396,6 +433,7 @@ window.addEventListener('DOMContentLoaded', () => {
                         this.deathDelayOver = true;
                         this.mode = GameMode.Spectating;
                     }, 3000);
+                    Game.SOUND_DRUMROLL_IN.play();
                     this.canPause = false;
                     break;
             }
@@ -435,9 +473,22 @@ window.addEventListener('DOMContentLoaded', () => {
                         cluster.update(); });
                     break;
                 case GameMode.Spectating:
-                    if (this.deathDelayOver) {
-                        camera.setY(camera.getY() + 0.1);
-                        camera.setAlpha(camera.getAlpha() + 0.01);
+                    if (!this.deathDelayOver)
+                        break;
+                    this.testT += 1;
+                    if (!this.towerFlyByComplte) {
+                        const slowDownY = this.player.getPos().y - 32.256000000000014;
+                        if (camera.getY() < 32.256000000000014) {
+                            this.cameraSpeed += 0.016;
+                        }
+                        else if (camera.getY() > slowDownY) {
+                            this.cameraSpeed -= 0.016;
+                        }
+                        camera.setY(camera.getY() + this.cameraSpeed);
+                        if (camera.getY() >= this.player.getPos().y) {
+                            this.towerFlyByComplte = true;
+                            camera.setY(this.player.getPos().y);
+                        }
                     }
                     break;
             }
@@ -463,11 +514,13 @@ window.addEventListener('DOMContentLoaded', () => {
                     switch (key) {
                         case 'p':
                             if (this.running) {
+                                Game.BACKGROUND_MUSIC.pause();
                                 pauseContainer.isVisible = true;
                                 this.running = false;
                                 Game.SOUND_PAUSE_IN.play();
                             }
                             else {
+                                Game.BACKGROUND_MUSIC.play();
                                 pauseContainer.isVisible = false;
                                 this.running = true;
                                 Game.SOUND_PAUSE_OUT.play();
@@ -496,6 +549,8 @@ window.addEventListener('DOMContentLoaded', () => {
             }));
             this.player = player;
             // play background music
+            Game.BACKGROUND_MUSIC.loop = true;
+            Game.BACKGROUND_MUSIC.setVolume(0.5);
             Game.BACKGROUND_MUSIC.play();
             camera.resetRotationindex();
         }

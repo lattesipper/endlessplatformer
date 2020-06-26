@@ -27,6 +27,31 @@ window.addEventListener('resize', () => {
 // Game instance
 let game;
 
+
+class UtilityFunctions {
+    public static fadeSound(sound: BABYLON.Sound, fadeTimeInSeconds : number, targetVolume: number, easingFunction = (t) => t, onDone = () => {}) {
+        let t = 0;
+        const originalVolume = sound.getVolume();
+        const diffVolume = targetVolume - originalVolume;
+        const callback = () => {
+            t += (1 / (60 * fadeTimeInSeconds));
+            if (t >= 1) {
+                t = 1;
+                sound.setVolume(targetVolume);
+                scene.onBeforeRenderObservable.removeCallback(callback);
+                onDone();
+            } else {
+                sound.setVolume(originalVolume + easingFunction(t) * diffVolume);
+            }
+        };
+        scene.onBeforeRenderObservable.add(callback);
+    }
+    public static fadeOutSound(sound: BABYLON.Sound, fadeOutTimeInSeconds : number, easingFunction = (t) => t) {
+        UtilityFunctions.fadeSound(sound, fadeOutTimeInSeconds, 0, easingFunction);
+    }
+}
+
+
 // GUI
 const gui = BABYLON.GUI.AdvancedDynamicTexture.CreateFullscreenUI("UI");
 gui.idealWidth = 1080;
@@ -365,6 +390,16 @@ class Game {
                 });
             }),
             new Promise((resolve) => {
+                Game.SOUND_DRUMROLL_IN = new BABYLON.Sound("", "https://raw.githubusercontent.com/lattesipper/endlessplatformer/master/resources/sounds/drumrollStart.mp3", scene, resolve, {
+                    loop: false, autoplay: false, volume: 0.5
+                });
+            }),
+            new Promise((resolve) => {
+                Game.SOUND_DRUMROLL_REPEAT = new BABYLON.Sound("", "https://raw.githubusercontent.com/lattesipper/endlessplatformer/master/resources/sounds/drumrollRepeat.mp3", scene, resolve, {
+                    loop: true, autoplay: false, volume: 0.5
+                });
+            }),
+            new Promise((resolve) => {
                 const lava = BABYLON.Mesh.CreateGround("ground", 500, 500, 50, scene);
                 lava.visibility = 0.5;
                 lava.position.y = -10;
@@ -390,6 +425,7 @@ class Game {
                 break;
             case GameMode.Spectating:
                 console.assert(this.mode == GameMode.Playing && this.canPause);
+                UtilityFunctions.fadeOutSound(Game.BACKGROUND_MUSIC, 1);
                 setTimeout(() => {
                     gameplayContainer.isVisible = false;
                     gameOverContainer.isVisible = true;
@@ -398,6 +434,7 @@ class Game {
                     this.deathDelayOver = true;
                     this.mode = GameMode.Spectating;
                 }, 3000);
+                Game.SOUND_DRUMROLL_IN.play();
                 this.canPause = false;
                 break;
         }
@@ -426,9 +463,21 @@ class Game {
                 this.fallboxClusters.forEach(cluster => { if (!cluster.isDisposed()) cluster.update(); });
                 break;
             case GameMode.Spectating:
-                if (this.deathDelayOver) {
-                    camera.setY(camera.getY() + 0.1);
-                    camera.setAlpha(camera.getAlpha() + 0.01);
+                if (!this.deathDelayOver)
+                    break;
+                this.testT += 1;
+                if (!this.towerFlyByComplte) {
+                    const slowDownY = this.player.getPos().y - 32.256000000000014;
+                    if (camera.getY() < 32.256000000000014) {
+                        this.cameraSpeed += 0.016;
+                    } else if (camera.getY() > slowDownY) {
+                        this.cameraSpeed -= 0.016;
+                    }
+                    camera.setY(camera.getY() + this.cameraSpeed);
+                    if (camera.getY() >= this.player.getPos().y) {
+                        this.towerFlyByComplte = true;
+                        camera.setY(this.player.getPos().y);
+                    }
                 }
                 break;
         }
@@ -456,10 +505,12 @@ class Game {
                     switch(key) {
                         case 'p':
                             if (this.running) {
+                                Game.BACKGROUND_MUSIC.pause();
                                 pauseContainer.isVisible = true;
                                 this.running = false;
                                 Game.SOUND_PAUSE_IN.play();
                             } else {
+                                Game.BACKGROUND_MUSIC.play();
                                 pauseContainer.isVisible = false;
                                 this.running = true;
                                 Game.SOUND_PAUSE_OUT.play();
@@ -496,6 +547,8 @@ class Game {
         this.player = player;
 
         // play background music
+        Game.BACKGROUND_MUSIC.loop = true;
+        Game.BACKGROUND_MUSIC.setVolume(0.5);
         Game.BACKGROUND_MUSIC.play();
         camera.resetRotationindex();
     }
@@ -560,12 +613,16 @@ class Game {
     private static BACKGROUND_MUSIC: BABYLON.Sound;
     private static SOUND_PAUSE_IN: BABYLON.Sound;
     private static SOUND_PAUSE_OUT: BABYLON.Sound;
+    private static SOUND_DRUMROLL_IN: BABYLON.Sound;
+    private static SOUND_DRUMROLL_REPEAT: BABYLON.Sound;
     private static MESH_LAVA: BABYLON.Mesh;
     // GAME CONSTANTS
     private static PLAYER_DISTANCE_FOR_FAST_LAVA: number = 75;
     private static LAVA_SPEED_STANDARD: number = 0.035;
     private static LAVA_SPEED_FAST: number = 0.2;
     private static MAXIMUM_YDISTANCE_UNDER_LAVA: number = 100;
+
+    private cameraSpeed: number = 0;
 
     private mode: GameMode = GameMode.Playing;
     private deathDelayOver: boolean = false;
@@ -580,6 +637,9 @@ class Game {
     private physBoxesSortedY: Array<PhysBox> = [];
     private physBoxToYIndex = new Map<PhysBox, number>();
     private updateCutoffYIndex: number = 0;
+
+    private testT: number = 0;
+    private towerFlyByComplte: boolean = false;
 
     private player: Player;
     private lava: BABYLON.TransformNode;
