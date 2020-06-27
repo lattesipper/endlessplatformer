@@ -49,6 +49,14 @@ class UtilityFunctions {
     public static fadeOutSound(sound: BABYLON.Sound, fadeOutTimeInSeconds : number, easingFunction = (t) => t) {
         UtilityFunctions.fadeSound(sound, fadeOutTimeInSeconds, 0, easingFunction);
     }
+    // https://stackoverflow.com/questions/2450954/how-to-randomize-shuffle-a-javascript-array
+    public static shuffleArray(array) {
+        for (let i = array.length - 1; i > 0; i--) {
+            const j = Math.floor(Math.random() * (i + 1));
+            [array[i], array[j]] = [array[j], array[i]];
+        }
+        return array;
+    }
 }
 
 // GUI
@@ -410,6 +418,7 @@ class Game {
                 lavaMaterial.speed = 0.5;
                 lavaMaterial.fogColor = new BABYLON.Color3(1, 0, 0);
                 lavaMaterial.unlit = true;
+                lavaMaterial.freeze();
                 lava.material = lavaMaterial;
                 lava.isVisible = false;
                 Game.MESH_LAVA = lava;
@@ -848,17 +857,23 @@ class FallBoxCluster {
         let frozenCount = 0;
         let physObjs = game.getPhysObjects();
         let startIndex = physObjs.length;
+
+        const sizes = UtilityFunctions.shuffleArray(
+            new Array(cubeCount).fill(null).map((x, idx) => {
+                idx /= cubeCount;
+                if (idx > 0.6) {
+                    return BABYLON.Vector3.One().scale(5)
+                } else if (idx > 0.3) {
+                    return BABYLON.Vector3.One().scale(3);
+                } else {
+                    return BABYLON.Vector3.One().scale(2);
+                }
+            })
+        );
         for (let i = 0; i < cubeCount; i++) {
-            let boxB = new FallBox();
+            const boxB = new FallBox();
             let obstructed = true;
-            const rnd = Math.random();
-            if (rnd <= 0.3) {
-                boxB.setSize(BABYLON.Vector3.One().scale(2));
-            } else if (rnd <= 0.6) {
-                boxB.setSize(BABYLON.Vector3.One().scale(3));
-            } else {
-                boxB.setSize(BABYLON.Vector3.One().scale(5));
-            }
+            boxB.setSize(sizes[i]);
             while (obstructed) {
                 boxB.setPos(new BABYLON.Vector3(-5 + Math.random() * 10, startY + Math.random() * 750, -5 + Math.random() * 10));
                 obstructed = false;
@@ -870,13 +885,13 @@ class FallBoxCluster {
             boxB.onEvent('freeze', (status) => {
                 frozenCount += (status == true ? 1 : -1);
                 this.active = (frozenCount != fallBoxes.length);
-                // if (this.active) {
-                //     SPS.mesh.unfreezeWorldMatrix();
-                //     SPS.mesh.unfreezeNormals();
-                // } else {
-                //     SPS.mesh.freezeWorldMatrix();
-                //     SPS.mesh.freezeNormals();
-                // }
+                if (this.active) {
+                    SPS.mesh.unfreezeWorldMatrix();
+                    SPS.mesh.unfreezeNormals();
+                } else {
+                    SPS.mesh.freezeWorldMatrix();
+                    SPS.mesh.freezeNormals();
+                }
             });
             fallBoxes.push(boxB);
             game.addPhysBox(boxB);
@@ -888,6 +903,7 @@ class FallBoxCluster {
         testMaterial.diffuseTexture.hasAlpha = true;
         testMaterial.backFaceCulling = false;
         testMaterial.ambientColor = new BABYLON.Color3(1,1,1);
+        testMaterial.freeze();
         SPS.addShape(box, cubeCount); 
         box.dispose();
         const mesh : BABYLON.Mesh = SPS.buildMesh(); 
@@ -940,6 +956,7 @@ class FloorBox extends PhysBox {
         const mesh = BABYLON.MeshBuilder.CreateBox('', {size: 1}, scene);
         const material = new BABYLON.StandardMaterial('', scene);
         material.diffuseTexture = new BABYLON.Texture("https://raw.githubusercontent.com/lattesipper/endlessplatformer/master/resources/images/floorBox.png", scene);
+        material.freeze();
         mesh.material = material;
         mesh.position = this.getPos();
         mesh.scaling = this.getSize();
@@ -991,6 +1008,7 @@ class Player extends PhysBox {
                     const testMaterial = new BABYLON.StandardMaterial('', scene);
                     testMaterial.diffuseTexture = new BABYLON.Texture('https://raw.githubusercontent.com/lattesipper/endlessplatformer/master/resources/meshes/player.png', scene);
                     testMaterial.ambientColor = new BABYLON.Color3(1, 1, 1);
+                    testMaterial.freeze();
                     meshes[0].material = testMaterial;
                     meshes[0].isVisible = false;
                     Player.MESH = <BABYLON.Mesh>(meshes[0]);
