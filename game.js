@@ -21,6 +21,7 @@ window.addEventListener('DOMContentLoaded', () => {
     });
     // Game instance
     let game;
+    let t = 0;
     class UtilityFunctions {
         static fadeSound(sound, fadeTimeInSeconds, targetVolume, easingFunction = (t) => t, onDone = () => { }) {
             let t = 0;
@@ -417,6 +418,7 @@ window.addEventListener('DOMContentLoaded', () => {
                 })
             ]);
         }
+        getHighestPhysBox() { return this.physBoxesSortedY[this.physBoxesSortedY.length - 1]; }
         changeMode(mode) {
             switch (mode) {
                 case GameMode.Playing:
@@ -443,6 +445,7 @@ window.addEventListener('DOMContentLoaded', () => {
             }
         }
         update() {
+            t++;
             if (!this.running)
                 return;
             // perform mode-specific update logic
@@ -490,13 +493,16 @@ window.addEventListener('DOMContentLoaded', () => {
                         }
                         camera.setY(camera.getY() + this.cameraSpeed);
                         if (this.cameraSpeed <= 0 || (camera.getY() >= this.player.getPos().y)) {
-                            this.towerFlyByComplte = true;
-                            Game.SOUND_DRUMROLL_REPEAT.stop();
-                            Game.SOUND_DRUMROLL_STOP.play();
+                            this.finishTowerFlyBy();
                         }
                     }
                     break;
             }
+        }
+        finishTowerFlyBy() {
+            this.towerFlyByComplte = true;
+            Game.SOUND_DRUMROLL_REPEAT.stop();
+            Game.SOUND_DRUMROLL_STOP.play();
         }
         dispose() {
             Game.BACKGROUND_MUSIC.stop();
@@ -531,6 +537,10 @@ window.addEventListener('DOMContentLoaded', () => {
                                 Game.SOUND_PAUSE_OUT.play();
                             }
                             break;
+                        case 'space':
+                            if (this.mode == GameMode.Spectating && !this.towerFlyByComplte) {
+                                this.finishTowerFlyBy();
+                            }
                     }
                 }
             }));
@@ -686,29 +696,23 @@ window.addEventListener('DOMContentLoaded', () => {
         onCollisionStop(side, physBox) { }
         beforeCollisions() {
             let tmp = this.collisionsThisUpdate;
+            this.collisionsLastUpdate.forEach((collisions, side) => collisions.clear());
             this.collisionsThisUpdate = this.collisionsLastUpdate;
-            this.collisionsThisUpdate.forEach((collisions, side) => collisions.clear());
             this.collisionsLastUpdate = tmp;
         }
         afterCollisions() {
             this.collisionsThisUpdate.forEach((collisions, side) => {
                 collisions.forEach((collision) => {
-                    if (!this.collisionsLastUpdate.get(side).has(collision)) {
+                    if (!this.collisionsLastUpdate.get(side).has(collision))
                         this.onCollisionStart(side, collision);
-                        collision.onCollisionStart(side.flip(), this);
-                    }
-                    else {
+                    else
                         this.onCollisionHold(side, collision);
-                        collision.onCollisionHold(side.flip(), this);
-                    }
                 });
             });
             this.collisionsLastUpdate.forEach((collisions, side) => {
                 collisions.forEach((collision) => {
-                    if (!this.collisionsThisUpdate.get(side).has(collision)) {
+                    if (!this.collisionsThisUpdate.get(side).has(collision))
                         this.onCollisionStop(side, collision);
-                        collision.onCollisionStop(side.flip(), this);
-                    }
                 });
             });
         }
@@ -790,7 +794,7 @@ window.addEventListener('DOMContentLoaded', () => {
                         if (hits[i].getPos().y == hits[0].getPos().y) {
                             this.collisionsThisUpdate.get(Sides.Back).add(hits[i]);
                             hits[i].notifyOfCollision(Sides.Forward, this);
-                            this.setSide(Sides.Back, hits[i].getSide(Sides.Forward) + 0.0001);
+                            this.setSide(Sides.Back, hits[i].getSide(Sides.Forward) + 0.001);
                         }
                         else
                             break;
@@ -802,7 +806,7 @@ window.addEventListener('DOMContentLoaded', () => {
                         if (hits[i].getPos().y == hits[0].getPos().y) {
                             this.collisionsThisUpdate.get(Sides.Forward).add(hits[i]);
                             hits[i].notifyOfCollision(Sides.Back, this);
-                            this.setSide(Sides.Forward, hits[i].getSide(Sides.Back) - 0.0001);
+                            this.setSide(Sides.Forward, hits[i].getSide(Sides.Back) - 0.001);
                         }
                         else
                             break;
@@ -861,9 +865,6 @@ window.addEventListener('DOMContentLoaded', () => {
                         SPS.mesh.freezeNormals();
                     }
                 });
-                if (!this.topBox || (boxB.getPos().y > this.topBox.getPos().y)) {
-                    this.topBox = boxB;
-                }
                 fallBoxes.push(boxB);
                 game.addPhysBox(boxB);
             }
@@ -897,8 +898,14 @@ window.addEventListener('DOMContentLoaded', () => {
         update() {
             if (this.disposed)
                 return;
-            if (this.topCluster && ((this.topBox.getPos().y - game.getPlayer().getPos().y) < 200)) {
-                game.createNewCluster(200, this.topBox.getPos().y);
+            // when to generate the next cluster.....
+            const highestPhysBox = game.getHighestPhysBox();
+            if (this.topCluster && (
+            // If the player is getting too close to the top of the cluster
+            ((highestPhysBox.getPos().y - game.getPlayer().getPos().y) < 200) ||
+                // If the cluster has finished falling
+                (!this.active))) {
+                game.createNewCluster(200, highestPhysBox.getPos().y);
                 this.topCluster = false;
             }
             if (!this.active)
@@ -925,7 +932,7 @@ window.addEventListener('DOMContentLoaded', () => {
         }
         onCollisionStart(side, physBox) {
             super.onCollisionStart(side, physBox);
-            if (side == Sides.Bottom && (physBox instanceof FallBox) && physBox.isFrozen()) {
+            if (side == Sides.Bottom && (physBox instanceof FallBox || physBox instanceof FloorBox) && physBox.isFrozen()) {
                 this.freeze();
             }
         }
@@ -952,7 +959,7 @@ window.addEventListener('DOMContentLoaded', () => {
             particleSystem.maxLifeTime = 0.6;
             particleSystem.emitRate = 2000;
             particleSystem.blendMode = BABYLON.ParticleSystem.BLENDMODE_ONEONE;
-            particleSystem.GRAVITY = new BABYLON.Vector3(0, 0, 0);
+            particleSystem.gravity = new BABYLON.Vector3(0, 0, 0);
             particleSystem.direction1 = new BABYLON.Vector3(-1, -1, -1);
             particleSystem.direction2 = new BABYLON.Vector3(1, 1, 1);
             particleSystem.minAngularSpeed = 0;
@@ -1208,7 +1215,7 @@ window.addEventListener('DOMContentLoaded', () => {
     Player.CRUSH_IMPULSE = 0.5;
     Player.SIDE_JUMP_IMPULSE = 0.4;
     Player.SIDE_XZ_IMPULSE = 0.2;
-    Player.SIDE_SLIDE_SPEED = 0.01;
+    Player.SIDE_SLIDE_SPEED = 0.05;
     // Gravity & Max speed
     Player.GRAVITY = 0.008;
     Player.MAX_Y_SPEED = 0.5;

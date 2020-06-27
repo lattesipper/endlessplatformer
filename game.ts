@@ -26,7 +26,7 @@ window.addEventListener('resize', () => {
 
 // Game instance
 let game;
-
+let t = 0;
 
 class UtilityFunctions {
     public static fadeSound(sound: BABYLON.Sound, fadeTimeInSeconds : number, targetVolume: number, easingFunction = (t) => t, onDone = () => {}) {
@@ -50,7 +50,6 @@ class UtilityFunctions {
         UtilityFunctions.fadeSound(sound, fadeOutTimeInSeconds, 0, easingFunction);
     }
 }
-
 
 // GUI
 const gui = BABYLON.GUI.AdvancedDynamicTexture.CreateFullscreenUI("UI");
@@ -341,7 +340,7 @@ class GameCamera {
         this.camera.alpha = 4.71238898039;
     }
     private static rotateSound: BABYLON.Sound;
-    private camera: BABYLON.Camera;
+    private camera: BABYLON.ArcRotateCamera;
     private rotating: boolean = false;
     private rotationIndex: number = 0;
     private node: BABYLON.TransformNode = new BABYLON.TransformNode('', scene);
@@ -418,6 +417,7 @@ class Game {
             })
         ]);
     }
+    public getHighestPhysBox() : PhysBox { return this.physBoxesSortedY[this.physBoxesSortedY.length - 1]; }
     private changeMode(mode: GameMode) {
         switch(mode) {
             case GameMode.Playing:
@@ -444,6 +444,7 @@ class Game {
         }
     }
     private update() {
+        t++;
         if (!this.running)
             return;
         // perform mode-specific update logic
@@ -479,13 +480,16 @@ class Game {
                     }
                     camera.setY(camera.getY() + this.cameraSpeed);
                     if (this.cameraSpeed <= 0 || (camera.getY() >= this.player.getPos().y)) {
-                        this.towerFlyByComplte = true;
-                        Game.SOUND_DRUMROLL_REPEAT.stop();
-                        Game.SOUND_DRUMROLL_STOP.play();
+                        this.finishTowerFlyBy();
                     }
                 }
                 break;
         }
+    }
+    private finishTowerFlyBy() {
+        this.towerFlyByComplte = true;
+        Game.SOUND_DRUMROLL_REPEAT.stop();
+        Game.SOUND_DRUMROLL_STOP.play();
     }
     public dispose() {
         Game.BACKGROUND_MUSIC.stop();
@@ -521,6 +525,10 @@ class Game {
                                 Game.SOUND_PAUSE_OUT.play();
                             }
                             break;
+                        case 'space':
+                            if (this.mode == GameMode.Spectating && !this.towerFlyByComplte) {
+                                this.finishTowerFlyBy();
+                            }
                     }
                 }
             })
@@ -710,28 +718,23 @@ class PhysBox extends BoundBox {
 
     public beforeCollisions() {
         let tmp = this.collisionsThisUpdate;
+        this.collisionsLastUpdate.forEach((collisions, side) => collisions.clear());
         this.collisionsThisUpdate = this.collisionsLastUpdate;
-        this.collisionsThisUpdate.forEach((collisions, side) => collisions.clear());
         this.collisionsLastUpdate = tmp;
     }
     public afterCollisions() {
         this.collisionsThisUpdate.forEach((collisions, side) => {
             collisions.forEach((collision) => {
-                if (!this.collisionsLastUpdate.get(side).has(collision)) {
+                if (!this.collisionsLastUpdate.get(side).has(collision))
                     this.onCollisionStart(side, collision);
-                    collision.onCollisionStart(side.flip(), this);
-                } else {
+                else 
                     this.onCollisionHold(side, collision);
-                    collision.onCollisionHold(side.flip(), this);
-                }
             });
         });
         this.collisionsLastUpdate.forEach((collisions, side) => {
             collisions.forEach((collision) => {
-                if (!this.collisionsThisUpdate.get(side).has(collision)) {
+                if (!this.collisionsThisUpdate.get(side).has(collision))
                     this.onCollisionStop(side, collision);
-                    collision.onCollisionStop(side.flip(), this);
-                }
             });
         });
     }
@@ -806,7 +809,7 @@ class PhysBox extends BoundBox {
                     if (hits[i].getPos().y == hits[0].getPos().y) {
                         this.collisionsThisUpdate.get(Sides.Back).add(hits[i]);
                         hits[i].notifyOfCollision(Sides.Forward, this);
-                        this.setSide(Sides.Back, hits[i].getSide(Sides.Forward) + 0.0001);
+                        this.setSide(Sides.Back, hits[i].getSide(Sides.Forward) + 0.001);
                     } else break;
                 }
             } else if (zVelocity > 0) {
@@ -815,7 +818,7 @@ class PhysBox extends BoundBox {
                     if (hits[i].getPos().y == hits[0].getPos().y) {
                         this.collisionsThisUpdate.get(Sides.Forward).add(hits[i]);
                         hits[i].notifyOfCollision(Sides.Back, this);
-                        this.setSide(Sides.Forward, hits[i].getSide(Sides.Back) - 0.0001);
+                        this.setSide(Sides.Forward, hits[i].getSide(Sides.Back) - 0.001);
                     } else break;
                 }
             }
@@ -867,17 +870,14 @@ class FallBoxCluster {
             boxB.onEvent('freeze', (status) => {
                 frozenCount += (status == true ? 1 : -1);
                 this.active = (frozenCount != fallBoxes.length);
-                if (this.active) {
-                    SPS.mesh.unfreezeWorldMatrix();
-                    SPS.mesh.unfreezeNormals();
-                } else {
-                    SPS.mesh.freezeWorldMatrix();
-                    SPS.mesh.freezeNormals();
-                }
+                // if (this.active) {
+                //     SPS.mesh.unfreezeWorldMatrix();
+                //     SPS.mesh.unfreezeNormals();
+                // } else {
+                //     SPS.mesh.freezeWorldMatrix();
+                //     SPS.mesh.freezeNormals();
+                // }
             });
-            if (!this.topBox || (boxB.getPos().y > this.topBox.getPos().y)) {
-                this.topBox = boxB;
-            }
             fallBoxes.push(boxB);
             game.addPhysBox(boxB);
         }
@@ -911,8 +911,15 @@ class FallBoxCluster {
     public update() {
         if (this.disposed)
             return;
-        if (this.topCluster && ((this.topBox.getPos().y - game.getPlayer().getPos().y) < 200)) {
-            game.createNewCluster(200, this.topBox.getPos().y);
+        // when to generate the next cluster.....
+        const highestPhysBox = game.getHighestPhysBox();
+        if (this.topCluster && (
+            // If the player is getting too close to the top of the cluster
+            ((highestPhysBox.getPos().y - game.getPlayer().getPos().y) < 200) ||
+            // If the cluster has finished falling
+            (!this.active))
+        ) {
+            game.createNewCluster(200, highestPhysBox.getPos().y);
             this.topCluster = false;
         }
         if (!this.active)
@@ -924,7 +931,6 @@ class FallBoxCluster {
     private iterIndex: number = 0;
     private active: boolean = true;
     private disposed: boolean = false;
-    private topBox: FallBox;
     private topCluster: boolean = true;
 }
 
@@ -947,7 +953,7 @@ class FallBox extends PhysBox {
     }
     public onCollisionStart(side: Sides, physBox : PhysBox) {
         super.onCollisionStart(side, physBox);
-        if (side == Sides.Bottom && (physBox instanceof FallBox) && physBox.isFrozen()) {
+        if (side == Sides.Bottom && (physBox instanceof FallBox || physBox instanceof FloorBox) && physBox.isFrozen()) {
             this.freeze();
         }
     }
@@ -1018,7 +1024,7 @@ class Player extends PhysBox {
         particleSystem.maxLifeTime = 0.6;
         particleSystem.emitRate = 2000;
         particleSystem.blendMode = BABYLON.ParticleSystem.BLENDMODE_ONEONE;
-        particleSystem.GRAVITY = new BABYLON.Vector3(0, 0, 0);
+        particleSystem.gravity = new BABYLON.Vector3(0, 0, 0);
         particleSystem.direction1 = new BABYLON.Vector3(-1, -1, -1);
         particleSystem.direction2 = new BABYLON.Vector3(1, 1, 1);
         particleSystem.minAngularSpeed = 0;
@@ -1203,7 +1209,7 @@ class Player extends PhysBox {
     private static CRUSH_IMPULSE = 0.5;
     private static SIDE_JUMP_IMPULSE = 0.4;
     private static SIDE_XZ_IMPULSE = 0.2;
-    private static SIDE_SLIDE_SPEED = 0.01;
+    private static SIDE_SLIDE_SPEED = 0.05;
     // Gravity & Max speed
     private static GRAVITY = 0.008;
     private static MAX_Y_SPEED = 0.5;
