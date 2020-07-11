@@ -555,7 +555,7 @@ class Game {
         this.addPhysBox(bottomBox);
 
         // create initial cube cluster
-        this.createNewCluster(200, 20);
+        this.createNewCluster(20);
 
         // all is ready, create the player
         const player = new Player();
@@ -577,7 +577,7 @@ class Game {
         camera.setBeta(0.65);
         camera.setRadius(25);
     }
-    public createNewCluster(cubeCount, startY) { this.fallboxClusters.push(new FallBoxCluster(cubeCount, startY)); }
+    public createNewCluster(startY) { this.fallboxClusters.push(new StartFallBoxCluster(startY)); }
 
     public addPhysBox(box) { this.physBoxesSortedY.push(box); }
 
@@ -852,28 +852,19 @@ class PhysBox extends BoundBox {
 
 // creates and manages a cluster of fallboxes
 class FallBoxCluster {
-    public constructor(cubeCount: number, startY: number) {
+    protected getFallBoxCount() : number {return 0;}
+    protected generateFallBox() : FallBox {return null;}
+
+    public constructor(startY: number) {
         const fallBoxes = [];
         let frozenCount = 0;
         let physObjs = game.getPhysObjects();
         let startIndex = physObjs.length;
 
-        const sizes = UtilityFunctions.shuffleArray(
-            new Array(cubeCount).fill(null).map((x, idx) => {
-                idx /= cubeCount;
-                if (idx > 0.6) {
-                    return BABYLON.Vector3.One().scale(5)
-                } else if (idx > 0.3) {
-                    return BABYLON.Vector3.One().scale(3);
-                } else {
-                    return BABYLON.Vector3.One().scale(2);
-                }
-            })
-        );
+        const cubeCount = this.getFallBoxCount();
         for (let i = 0; i < cubeCount; i++) {
-            const boxB = new FallBox();
+            const boxB = this.generateFallBox();
             let obstructed = true;
-            boxB.setSize(sizes[i]);
             while (obstructed) {
                 boxB.setPos(new BABYLON.Vector3(-5 + Math.random() * 10, startY + Math.random() * 750, -5 + Math.random() * 10));
                 obstructed = false;
@@ -881,7 +872,6 @@ class FallBoxCluster {
                     if (physObjs[i].intersects(boxB)) { obstructed = true; break; }
                 }
             }
-            boxB.setVelocity(new BABYLON.Vector3(0, -0.075, 0));
             boxB.onEvent('freeze', (status) => {
                 frozenCount += (status == true ? 1 : -1);
                 this.active = (frozenCount != fallBoxes.length);
@@ -935,7 +925,7 @@ class FallBoxCluster {
             // If the cluster has finished falling
             (!this.active))
         ) {
-            game.createNewCluster(200, highestPhysBox.getPos().y);
+            game.createNewCluster(highestPhysBox.getPos().y);
             this.topCluster = false;
         }
         if (!this.active)
@@ -948,6 +938,22 @@ class FallBoxCluster {
     private active: boolean = true;
     private disposed: boolean = false;
     private topCluster: boolean = true;
+}
+class StartFallBoxCluster extends FallBoxCluster {
+    protected getFallBoxCount() : number { return 200; }
+    protected generateFallBox() : FallBox {
+        const fallbox = new FallBox();
+        const rnd = Math.random();
+        if (rnd <= 0.33) {
+            fallbox.setSize(BABYLON.Vector3.One().scale(2));
+        } else if (rnd <= 0.66) {
+            fallbox.setSize(BABYLON.Vector3.One().scale(3));
+        } else {
+            fallbox.setSize(BABYLON.Vector3.One().scale(5));
+        }
+        fallbox.setVelocity(new BABYLON.Vector3(0, -0.075, 0));
+        return fallbox;
+    }
 }
 
 class FloorBox extends PhysBox {
