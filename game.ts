@@ -411,7 +411,7 @@ class Game {
             new Promise((resolve) => {
                 const lava = BABYLON.Mesh.CreateGround("ground", 150, 150, 25, scene);
                 lava.visibility = 0.5;
-                lava.position.y = -10;
+                lava.position.y = -20;
                 const lavaMaterial = new BABYLON.LavaMaterial("lava", scene);	
                 lavaMaterial.noiseTexture = new BABYLON.Texture("https://www.babylonjs-playground.com/textures/lava/cloud.png", scene); // Set the bump texture
                 lavaMaterial.diffuseTexture = new BABYLON.Texture("https://www.babylonjs-playground.com/textures/lava/lavatile.jpg", scene); // Set the diffuse texture
@@ -430,70 +430,112 @@ class Game {
     private changeMode(mode: GameMode) {
         switch(mode) {
             case GameMode.Playing:
+                // show only the gameplay container
                 gameOverContainer.isVisible = false;
                 gameplayContainer.isVisible = true;
-                this.mode = GameMode.Playing;
-                break;
+                this.mode = GameMode.Playing;       // set mode1
+                break;2
             case GameMode.Spectating:
                 console.assert(this.mode == GameMode.Playing && this.canPause);
+                // fade out background music, the game is over
                 UtilityFunctions.fadeOutSound(Game.BACKGROUND_MUSIC, 1);
+                // we don't want pausing during the delay between playing and spectating
+                this.canPause = false;
+                // delay transition to spectator mode by 3 seconds, creating an effective death-cam hang
                 setTimeout(() => {
+                    // show only the game over container
                     gameplayContainer.isVisible = false;
                     gameOverContainer.isVisible = true;
+                    // reset camera position to the start of the level, and orientate to side
                     camera.setY(0);
-                    this.lava.position.y = -15;
-                    this.deathDelayOver = true;
-                    this.mode = GameMode.Spectating;
                     camera.setBeta(Math.PI / 2);
                     camera.setRadius(50);
+                    // reset lava position to the beginning
+                    this.lava.position.y = -15;
+                    // start the drumroll as the spectator camera moves up
                     Game.SOUND_DRUMROLL_REPEAT.play();
+                    this.mode = GameMode.Spectating;    // set mode
                 }, 3000);
-                this.canPause = false;
                 break;
         }
     }
     private update() {
         t++;
+        // paused games don't update
         if (!this.running)
             return;
-        // perform mode-specific update logic
+        // perform state-specific update
         switch(this.mode) {
             case GameMode.Playing:
-                if ((this.player.getPos().y - this.lava.position.y) < Game.PLAYER_DISTANCE_FOR_FAST_LAVA) {
-                    this.lava.position.y += Game.LAVA_SPEED_STANDARD;
-                } else {
-                    this.lava.position.y += Game.LAVA_SPEED_FAST;
-                }
-                // update the sorted physbox list for sort&sweep collisions
-                this.ySortBoxes();
-                // resolve physbox collisions
-                for (let i = this.updateCutoffYIndex; i < this.physBoxesSortedY.length; i++) 
-                { const pbox = this.physBoxesSortedY[i]; if (pbox.isActive() && !pbox.isDisposed()) pbox.beforeCollisions(); }
-                for (let i = this.updateCutoffYIndex; i < this.physBoxesSortedY.length; i++) 
-                { const pbox = this.physBoxesSortedY[i]; if (pbox.isActive() && !pbox.isDisposed()) pbox.resolveCollisions(0); }
-                for (let i = this.updateCutoffYIndex; i < this.physBoxesSortedY.length; i++) 
-                { const pbox = this.physBoxesSortedY[i]; if (pbox.isActive() && !pbox.isDisposed()) pbox.afterCollisions(); }
-                // update fallbox clusters
-                this.fallboxClusters.forEach(cluster => { if (!cluster.isDisposed()) cluster.update(); });
+                this.updatePlaying();
                 break;
             case GameMode.Spectating:
-                if (!this.deathDelayOver)
-                    break;
-                this.testT += 1;
-                if (!this.towerFlyByComplte) {
-                    const slowDownY = this.player.getPos().y - 32.256000000000014;
-                    if (camera.getY() < 32.256000000000014) {
-                        this.cameraSpeed += 0.016;
-                    } else if (camera.getY() > slowDownY) {
-                        this.cameraSpeed -= 0.016;
-                    }
-                    camera.setY(camera.getY() + this.cameraSpeed);
-                    if (this.cameraSpeed <= 0 || (camera.getY() >= this.player.getPos().y)) {
-                        this.finishTowerFlyBy();
-                    }
-                }
+                this.updateSpectating();
                 break;
         }
+        // update visible phys-boxes based on camera location
+        this.updateVisiblePhysBoxes();
+    }
+    private updatePlaying() {
+        // update lava position, moving at either a standard or fast pace depending on distance from player
+        if ((this.player.getPos().y - this.lava.position.y) < Game.PLAYER_DISTANCE_FOR_FAST_LAVA) {
+            this.lava.position.y += Game.LAVA_SPEED_STANDARD;
+        } else {
+            this.lava.position.y += Game.LAVA_SPEED_FAST;
+        }
+        // sort the physbox list for efficient sort&sweep collisions as well as visibility checking
+        this.ySortBoxes();
+        // resolve physbox collisions
+        for (let i = this.updateCutoffYIndex; i < this.physBoxesSortedY.length; i++) 
+        { const pbox = this.physBoxesSortedY[i]; if (pbox.isActive() && !pbox.isDisposed()) pbox.beforeCollisions(); }
+        for (let i = this.updateCutoffYIndex; i < this.physBoxesSortedY.length; i++) 
+        { const pbox = this.physBoxesSortedY[i]; if (pbox.isActive() && !pbox.isDisposed()) pbox.resolveCollisions(0); }
+        for (let i = this.updateCutoffYIndex; i < this.physBoxesSortedY.length; i++) 
+        { const pbox = this.physBoxesSortedY[i]; if (pbox.isActive() && !pbox.isDisposed()) pbox.afterCollisions(); }
+    }
+    private updateSpectating() {
+        if (!this.towerFlyByComplte) {
+            const slowDownY = this.player.getPos().y - 32.256000000000014;
+            if (camera.getY() < 32.256000000000014) {
+                this.cameraSpeed += 0.016;
+            } else if (camera.getY() > slowDownY) {
+                this.cameraSpeed -= 0.016;
+            }
+            camera.setY(camera.getY() + this.cameraSpeed);
+            if (this.cameraSpeed <= 0 || (camera.getY() >= this.player.getPos().y)) {
+                this.finishTowerFlyBy();
+            }
+        }
+    }
+    private updateVisiblePhysBoxes() {
+        const startYValue = camera.getY() - 50;
+        const endYValue = camera.getY() + 50;
+        const cameraYIndex = this.getClosestYIndex(camera.getY());
+        let searchYDown = cameraYIndex;
+        while (searchYDown >= 0 && (this.physBoxesSortedY[searchYDown].getPos().y >= startYValue)) {
+            const physbox = this.physBoxesSortedY[searchYDown];
+            if (!this.observedEntitiesLastUpdate.has(physbox))
+                physbox.startObservation();
+            searchYDown--;
+            this.observedEntitiesThisUpdate.add(physbox);
+        }
+        let searchYUp = cameraYIndex;
+        while (searchYUp < this.physBoxesSortedY.length && (this.physBoxesSortedY[searchYUp].getPos().y <= endYValue)) {
+            const physbox = this.physBoxesSortedY[searchYUp];
+            if (!this.observedEntitiesLastUpdate.has(physbox))
+                physbox.startObservation();
+            searchYUp++;
+            this.observedEntitiesThisUpdate.add(physbox);
+        }
+        
+        this.observedEntitiesLastUpdate.forEach((physBox) => {
+            if (!this.observedEntitiesThisUpdate.has(physBox))
+                physBox.endObservation();
+        });
+        const tmp = this.observedEntitiesLastUpdate;
+        this.observedEntitiesLastUpdate = this.observedEntitiesThisUpdate;
+        this.observedEntitiesThisUpdate = tmp;
+        this.observedEntitiesThisUpdate.clear();
     }
     private finishTowerFlyBy() {
         this.towerFlyByComplte = true;
@@ -505,7 +547,6 @@ class Game {
         Game.BACKGROUND_MUSIC.stop();
         scene.onBeforeRenderObservable.removeCallback(this.updateCallbackFunc);
         this.physBoxesSortedY.forEach((physBox) => physBox.dispose());
-        this.fallboxClusters.forEach((cluster) => cluster.dispose());
         this.lava.dispose();
         this.callbackFunctions.forEach((func) => func());
     }
@@ -557,7 +598,7 @@ class Game {
         this.addPhysBox(bottomBox);
 
         // create initial cube cluster
-        this.createNewCluster(20);
+        this.currentLevel = new StartLevel(10);
 
         // all is ready, create the player
         const player = new Player();
@@ -579,7 +620,6 @@ class Game {
         camera.setBeta(0.65);
         camera.setRadius(25);
     }
-    public createNewCluster(startY) { this.fallboxClusters.push(new StartFallBoxCluster(startY)); }
 
     public addPhysBox(box) { this.physBoxesSortedY.push(box); }
 
@@ -604,6 +644,18 @@ class Game {
             if (this.physBoxesSortedY[i].getPos().y < (this.lava.position.y - Game.MAXIMUM_YDISTANCE_UNDER_LAVA))
                 this.updateCutoffYIndex = i;
         }
+    }
+    private getClosestYIndex(yValue) {
+        let low = 0;
+        let high = this.physBoxesSortedY.length - 1;
+        let mid;      
+        while (low <= high){
+            mid = Math.floor((low+high)/2);     
+            if (this.physBoxesSortedY[mid].getPos().y==yValue) return mid; 
+            else if (this.physBoxesSortedY[mid].getPos().y<yValue) low = mid+1;
+            else high = mid-1;          
+        }
+        return Math.min(low, this.physBoxesSortedY.length-1);
     }
     // SWEEP AND PRUNE
     public getCollisions(physBox: PhysBox, dim: string) {
@@ -644,29 +696,30 @@ class Game {
     private static SOUND_DRUMROLL_STOP: BABYLON.Sound;
     private static MESH_LAVA: BABYLON.Mesh;
     // GAME CONSTANTS
-    private static PLAYER_DISTANCE_FOR_FAST_LAVA: number = 30;
-    private static LAVA_SPEED_STANDARD: number = 0.03;
-    private static LAVA_SPEED_FAST: number = 0.2;
+    private static PLAYER_DISTANCE_FOR_FAST_LAVA: number = 100;
+    private static LAVA_SPEED_STANDARD: number = 0.0275;
+    private static LAVA_SPEED_FAST: number = 0.1;
     private static MAXIMUM_YDISTANCE_UNDER_LAVA: number = 100;
 
     private cameraSpeed: number = 0;
 
     private mode: GameMode = GameMode.Playing;
-    private deathDelayOver: boolean = false;
     private canPause: boolean = true;
 
     private updateCallbackFunc;
     private callbackFunctions : Array<CallableFunction> = [];
 
     private running : boolean = true;
-    private fallboxClusters : Array<FallBoxCluster> = [];
+    private currentLevel: Level = null;
 
     private physBoxesSortedY: Array<PhysBox> = [];
     private physBoxToYIndex = new Map<PhysBox, number>();
     private updateCutoffYIndex: number = 0;
 
-    private testT: number = 0;
     private towerFlyByComplte: boolean = false;
+
+    private observedEntitiesThisUpdate: Set<PhysBox> = new Set();
+    private observedEntitiesLastUpdate: Set<PhysBox> = new Set();
 
     private player: Player;
     private lava: BABYLON.TransformNode;
@@ -742,9 +795,8 @@ class PhysBox extends GameObj {
     public getMoverLevel() : number { return this.moverLevel; }
     public setMoverLevel(moverLevel: number) { this.moverLevel = moverLevel; }
 
-    public isObserved() : boolean { return this.observed; }
-    public startObservation() { this.observed = true; }
-    public endObservation() { this.observed = false; }
+    public startObservation() {}
+    public endObservation() {}
 
     // collision callbacks
     public onCollisionStart(side: Sides, physBox: PhysBox) { }
@@ -876,13 +928,14 @@ class PhysBox extends GameObj {
 
     private frozen: boolean = false;
     private active: boolean = true;
-    private observed: boolean = false;
     private collisionGroup: CollisionGroups = CollisionGroups.Unknown;
     private moverLevel: number = 1;
     private velocity: BABYLON.Vector3 = BABYLON.Vector3.Zero();
     private terminalVelocity: number = 5;
     private disposed: boolean = false;
     private gravity: number = 0;
+
+    private poolMesh: BABYLON.TransformNode = null;
 
     private node: BABYLON.TransformNode = new BABYLON.TransformNode('', scene);
 
@@ -894,98 +947,54 @@ class PhysBox extends GameObj {
     ]);
 }
 
-// creates and manages a cluster of fallboxes
-class FallBoxCluster {
-    protected getFallBoxCount() : number {return 0;}
-    protected generateFallBox() : FallBox {return null;}
-
+abstract class Level {
+    protected abstract generateFallBox(): FallBox;
+    protected abstract getFallBoxCount() : number;
+    protected abstract getHeight() : number;
     public constructor(startY: number) {
-        const fallBoxes = [];
-        let frozenCount = 0;
-        let physObjs = game.getPhysObjects();
-        let startIndex = physObjs.length;
-
         const cubeCount = this.getFallBoxCount();
         for (let i = 0; i < cubeCount; i++) {
             const boxB = this.generateFallBox();
-            let obstructed = true;
-            while (obstructed) {
-                boxB.setPos(new BABYLON.Vector3(-5 + Math.random() * 10, startY + Math.random() * 750, -5 + Math.random() * 10));
-                obstructed = false;
-                for (let i = startIndex; i < physObjs.length; i++) {
-                    if (physObjs[i].intersects(boxB)) { obstructed = true; break; }
-                }
-            }
-            boxB.onEvent('freeze', (status) => {
-                frozenCount += (status == true ? 1 : -1);
-                this.active = (frozenCount != fallBoxes.length);
-                if (this.active) {
-                    SPS.mesh.unfreezeWorldMatrix();
-                    SPS.mesh.unfreezeNormals();
-                } else {
-                    SPS.mesh.freezeWorldMatrix();
-                    SPS.mesh.freezeNormals();
-                }
-            });
-            fallBoxes.push(boxB);
+            boxB.setPos(new BABYLON.Vector3(-5 + Math.random() * 10, startY + Math.random() * this.getHeight(), -5 + Math.random() * 10));
             game.addPhysBox(boxB);
         }
-        const SPS = new BABYLON.SolidParticleSystem("SPS", scene);
-        const box = BABYLON.MeshBuilder.CreateBox('', {size: 1}, scene);
-        const testMaterial = new BABYLON.StandardMaterial('', scene);
-        testMaterial.diffuseTexture = new BABYLON.Texture('https://raw.githubusercontent.com/lattesipper/endlessplatformer/master/resources/images/testBox.png', scene);
-        testMaterial.diffuseTexture.hasAlpha = true;
-        testMaterial.backFaceCulling = false;
-        testMaterial.ambientColor = new BABYLON.Color3(1,1,1);
-        testMaterial.freeze();
-        SPS.addShape(box, cubeCount); 
-        box.dispose();
-        const mesh : BABYLON.Mesh = SPS.buildMesh(); 
-        mesh.alwaysSelectAsActiveMesh = true;
-        mesh.material = testMaterial;
-        SPS.computeParticleRotation = false;
-        SPS.updateParticle = (particle) => {
-            particle.position.copyFrom(fallBoxes[this.iterIndex].getPos());
-            particle.scaling.copyFrom(fallBoxes[this.iterIndex].getSize());
-            particle.color.copyFrom(fallBoxes[this.iterIndex].getColor());
-            this.iterIndex++;
-            return particle;
-        };
-        this.SPS = SPS;
-        this.additionalLogic();
     }
-    public additionalLogic() {
-
-    }
-    public isDisposed() : boolean { return this.disposed; }
-    public dispose() {
-        this.SPS.dispose();
-        this.disposed = true;
-    }
-    public update() {
-        if (this.disposed)
-            return;
-        // when to generate the next cluster.....
-        const highestPhysBox = game.getHighestPhysBox();
-        if (this.topCluster && (
-            // If the player is getting too close to the top of the cluster
-            ((highestPhysBox.getPos().y - game.getPlayer().getPos().y) < 200) ||
-            // If the cluster has finished falling
-            (!this.active))
-        ) {
-            game.createNewCluster(highestPhysBox.getPos().y);
-            this.topCluster = false;
+}
+class StartLevel extends Level {
+    public constructor(startY: number) {
+        super(startY);
+        for (var i = 0; i < 3; i++) {
+            const boulder = new Boulder();
+            this.boulders.push(boulder);
+            game.addPhysBox(boulder);
         }
-        if (!this.active)
-            return;
-        this.iterIndex = 0;
-        this.SPS.setParticles();
+        setInterval(() => {
+            if (Math.random() > 0.5) {
+                const launchCount = Math.floor(Math.random() / 0.334) + 1;
+                let launched = 0;
+                for (let i = 0; (i < 3) && (launched < launchCount); i++) {
+                    if (this.boulders[i].launch())
+                        launched++;
+                }
+            }
+        }, 5000);
     }
-    private SPS: BABYLON.SolidParticleSystem;
-    private iterIndex: number = 0;
-    private active: boolean = true;
-    private disposed: boolean = false;
-    private topCluster: boolean = true;
+    protected getFallBoxCount() : number {return 200;}
+    protected getHeight() : number {return 750;}
+    protected generateFallBox() : FallBox {
+        const fallbox = new FallBoxBasic();
+        const rnd = Math.random();
+        if (rnd <= 0.33) {
+            fallbox.setSize(BABYLON.Vector3.One().scale(2));
+        } else if (rnd <= 0.66) {
+            fallbox.setSize(BABYLON.Vector3.One().scale(3));
+        } else {
+            fallbox.setSize(BABYLON.Vector3.One().scale(5));
+        }
+        fallbox.setVelocity(new BABYLON.Vector3(0, -0.075, 0));
+        return fallbox;
+    }
+    private boulders: Array<Boulder> = [];
 }
 
 enum BoulderState {
@@ -1057,6 +1066,12 @@ class Boulder extends PhysBox {
         this.resetTimeSeconds = Math.random() * 3;
         this.obj.isVisible = false;
     }
+    public dispose() {
+        super.dispose();
+        this.smokeSystem.dispose();
+        this.fireSystem.dispose();
+        this.obj.dispose();
+    }
     public launch() : boolean {
         if (this.myState != BoulderState.Waiting)
             return false;
@@ -1100,37 +1115,6 @@ class Boulder extends PhysBox {
     private obj: BABYLON.Mesh;
 }
 
-class StartFallBoxCluster extends FallBoxCluster {
-    public additionalLogic() {
-        this.bolder = new Boulder();
-        game.addPhysBox(this.bolder);
-    }
-    public update() {
-        super.update();
-        t += (1/60);
-        if (t >= 5 && Math.random() > 0.5) {
-            this.bolder.launch();
-            t = 0;
-        }
-    }
-    protected getFallBoxCount() : number { return 200; }
-    protected generateFallBox() : FallBox {
-        const fallbox = new FallBox();
-        const rnd = Math.random();
-        if (rnd <= 0.33) {
-            fallbox.setSize(BABYLON.Vector3.One().scale(2));
-        } else if (rnd <= 0.66) {
-            fallbox.setSize(BABYLON.Vector3.One().scale(3));
-        } else {
-            fallbox.setSize(BABYLON.Vector3.One().scale(5));
-        }
-        fallbox.setVelocity(new BABYLON.Vector3(0, -0.075, 0));
-        return fallbox;
-    }
-    private t: number = 0;
-    private bolder: Boulder;
-}
-
 class FloorBox extends PhysBox {
     public constructor() {
         super();
@@ -1160,6 +1144,61 @@ class FallBox extends PhysBox {
     }
     public getColor() : BABYLON.Color4 { return this.color; }
     private color: BABYLON.Color4;
+}
+
+class FallBoxBasic extends FallBox {
+    public static LoadResources() : Promise<any> {
+        return new Promise((resolve) => {
+            const box = BABYLON.MeshBuilder.CreateBox('', {size: 1}, scene);
+            const testMaterial = new BABYLON.StandardMaterial('', scene);
+            testMaterial.diffuseTexture = new BABYLON.Texture('https://raw.githubusercontent.com/lattesipper/endlessplatformer/master/resources/images/testBox.png', scene);
+            testMaterial.diffuseTexture.hasAlpha = true;
+            testMaterial.backFaceCulling = false;
+            testMaterial.ambientColor = new BABYLON.Color3(1,1,1);
+            testMaterial.freeze();
+            box.material = testMaterial;
+            box.isVisible = false;
+            const instancePool = [];
+            for (let i = 0; i < FallBoxBasic.INSTANCE_COUNT; i++) {
+                const instance = box.createInstance('');
+                instance.isVisible = false;
+                instancePool.push(instance);
+            }
+            FallBoxBasic.TEMPLATE_MESH = box;
+            FallBoxBasic.INSTANCE_POOL = instancePool;
+            resolve();
+        });
+    }
+    public constructor() {
+        super();
+        this.setMoverLevel(2);
+    }
+    public dispose() {
+        super.dispose();
+        this.endObservation();
+    }
+    public startObservation() {
+        super.startObservation();
+        if (this.instance)
+            return;
+        console.assert(FallBoxBasic.INSTANCE_POOL.length > 0);
+        this.instance = FallBoxBasic.INSTANCE_POOL.pop();
+        this.instance.position = this.getPos();
+        this.instance.scaling = this.getSize();
+        this.instance.isVisible = true;
+    }
+    public endObservation() {
+        super.endObservation();
+        if (!this.instance)
+            return;
+        FallBoxBasic.INSTANCE_POOL.push(this.instance);
+        this.instance.isVisible = false;
+        this.instance = null;
+    }
+    private instance: BABYLON.Transform = null;
+    private static TEMPLATE_MESH: BABYLON.Mesh;
+    private static INSTANCE_COUNT: number = 300;
+    private static INSTANCE_POOL: Array<BABYLON.TransformNode> = [];
 }
 
 class Player extends PhysBox {
@@ -1426,7 +1465,8 @@ class Player extends PhysBox {
 Promise.all([
     Game.LoadResources(),
     Player.LoadResources(),
-    GameCamera.LoadResources()
+    GameCamera.LoadResources(),
+    FallBoxBasic.LoadResources()
 ]).then(() => {
     loadingContainer.isVisible = false;
     menuContainer.isVisible = true;
