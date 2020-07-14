@@ -294,7 +294,7 @@ window.addEventListener('DOMContentLoaded', () => {
                     camera.alpha = camera.alpha - (Math.PI * 2);
                 }
                 // rotate camera right 90 degrees
-                if (InputManager.getInstance().isKeyPressed('arrowright') && !this.rotating) {
+                if (InputManager.getInstance().isKeyPressed('arrowright') && !this.rotating && !game.isPaused()) {
                     var animationBox = new BABYLON.Animation("myAnimation", "alpha", 60, BABYLON.Animation.ANIMATIONTYPE_FLOAT, BABYLON.Animation.ANIMATIONLOOPMODE_CONSTANT);
                     animationBox.setKeys([{ frame: 0, value: camera.alpha }, { frame: 20, value: camera.alpha + (Math.PI / 2) }]);
                     camera.animations = [animationBox];
@@ -303,7 +303,7 @@ window.addEventListener('DOMContentLoaded', () => {
                     game.pause();
                     GameCamera.rotateSound.play();
                 }
-                else if (InputManager.getInstance().isKeyPressed('arrowleft') && !this.rotating) {
+                else if (InputManager.getInstance().isKeyPressed('arrowleft') && !this.rotating && !game.isPaused()) {
                     var animationBox = new BABYLON.Animation("myAnimation2", "alpha", 60, BABYLON.Animation.ANIMATIONTYPE_FLOAT, BABYLON.Animation.ANIMATIONLOOPMODE_CONSTANT);
                     animationBox.setKeys([{ frame: 0, value: camera.alpha }, { frame: 20, value: camera.alpha - (Math.PI / 2) }]);
                     camera.animations = [animationBox];
@@ -410,7 +410,7 @@ window.addEventListener('DOMContentLoaded', () => {
                     });
                 }),
                 new Promise((resolve) => {
-                    const lava = BABYLON.Mesh.CreateGround("ground", 500, 500, 50, scene);
+                    const lava = BABYLON.Mesh.CreateGround("ground", 150, 150, 25, scene);
                     lava.visibility = 0.5;
                     lava.position.y = -10;
                     const lavaMaterial = new BABYLON.LavaMaterial("lava", scene);
@@ -514,6 +514,7 @@ window.addEventListener('DOMContentLoaded', () => {
             Game.SOUND_DRUMROLL_STOP.play();
         }
         dispose() {
+            Game.SOUND_DRUMROLL_REPEAT.stop();
             Game.BACKGROUND_MUSIC.stop();
             scene.onBeforeRenderObservable.removeCallback(this.updateCallbackFunc);
             this.physBoxesSortedY.forEach((physBox) => physBox.dispose());
@@ -524,6 +525,7 @@ window.addEventListener('DOMContentLoaded', () => {
         getLavaLevel() { return this.lava.position.y - 1; }
         pause() { this.running = false; }
         play() { this.running = true; }
+        isPaused() { return !this.running; }
         start() {
             // setup update callback
             this.updateCallbackFunc = (() => this.update());
@@ -636,17 +638,51 @@ window.addEventListener('DOMContentLoaded', () => {
         }
     }
     // GAME CONSTANTS
-    Game.PLAYER_DISTANCE_FOR_FAST_LAVA = 75;
-    Game.LAVA_SPEED_STANDARD = 0.035;
+    Game.PLAYER_DISTANCE_FOR_FAST_LAVA = 30;
+    Game.LAVA_SPEED_STANDARD = 0.03;
     Game.LAVA_SPEED_FAST = 0.2;
     Game.MAXIMUM_YDISTANCE_UNDER_LAVA = 100;
     class GameObj extends Observable {
     }
-    class BoundBox extends GameObj {
+    class CollisionGroups {
+        collides(otherGroup) { return CollisionGroups.collisionMap.get(this).has(otherGroup); }
+    }
+    CollisionGroups.Level = new CollisionGroups();
+    CollisionGroups.Player = new CollisionGroups();
+    CollisionGroups.Enemy = new CollisionGroups();
+    CollisionGroups.FloatEnemy = new CollisionGroups();
+    CollisionGroups.Unknown = new CollisionGroups();
+    CollisionGroups.collisionMap = new Map([
+        [CollisionGroups.Level, new Set([CollisionGroups.Level, CollisionGroups.Player, CollisionGroups.Enemy])],
+        [CollisionGroups.Player, new Set([CollisionGroups.Level, CollisionGroups.Enemy, CollisionGroups.FloatEnemy])],
+        [CollisionGroups.Enemy, new Set([CollisionGroups.Level, CollisionGroups.Player])],
+        [CollisionGroups.FloatEnemy, new Set([CollisionGroups.Player])],
+        [CollisionGroups.Unknown, new Set()]
+    ]);
+    CollisionGroups.instance = new CollisionGroups();
+    class PhysBox extends GameObj {
         constructor(...args) {
             super(...args);
+            this.frozen = false;
+            this.active = true;
+            this.collisionGroup = CollisionGroups.Unknown;
+            this.moverLevel = 1;
+            this.velocity = BABYLON.Vector3.Zero();
+            this.terminalVelocity = 5;
+            this.disposed = false;
+            this.gravity = 0;
             this.node = new BABYLON.TransformNode('', scene);
+            this.collisionsLastUpdate = new Map([
+                [Sides.Left, new Set()], [Sides.Right, new Set()], [Sides.Top, new Set()], [Sides.Bottom, new Set()], [Sides.Forward, new Set()], [Sides.Back, new Set()]
+            ]);
+            this.collisionsThisUpdate = new Map([
+                [Sides.Left, new Set()], [Sides.Right, new Set()], [Sides.Top, new Set()], [Sides.Bottom, new Set()], [Sides.Forward, new Set()], [Sides.Back, new Set()]
+            ]);
         }
+        // destructor
+        dispose() { this.disposed = true; }
+        isDisposed() { return this.disposed; }
+        // physical properties
         getPos() { return this.node.position; }
         setPos(pos) { this.node.position.copyFrom(pos); return this; }
         setSize(size) { this.node.scaling.copyFrom(size); return this; }
@@ -654,8 +690,11 @@ window.addEventListener('DOMContentLoaded', () => {
         getSide(side) { return this.node.position[side.dim] + (this.node.scaling[side.dim] * 0.5 * side.direction); }
         setSide(side, value) { this.node.position[side.dim] = value - (this.node.scaling[side.dim] * 0.5 * side.direction); }
         intersects(otherBox) {
-            // bounding boxes can't collide with themselves
+            // physboxes can't collide with themselves
             if (otherBox == this)
+                return false;
+            // the collision groups of the two physboxes must collide
+            if (!this.collisionGroup.collides(otherBox.collisionGroup))
                 return false;
             // a collision occurs if there is no axis that seperates the two bounding boxes
             return (!(this.getSide(Sides.Left) > otherBox.getSide(Sides.Right)) &&
@@ -665,32 +704,25 @@ window.addEventListener('DOMContentLoaded', () => {
                 !(this.getSide(Sides.Bottom) > otherBox.getSide(Sides.Top)) &&
                 !(this.getSide(Sides.Top) < otherBox.getSide(Sides.Bottom)));
         }
-    }
-    class PhysBox extends BoundBox {
-        constructor(...args) {
-            super(...args);
-            this.frozen = false;
-            this.active = true;
-            this.velocity = BABYLON.Vector3.Zero();
-            this.disposed = false;
-            this.collisionsLastUpdate = new Map([
-                [Sides.Left, new Set()], [Sides.Right, new Set()], [Sides.Top, new Set()], [Sides.Bottom, new Set()], [Sides.Forward, new Set()], [Sides.Back, new Set()]
-            ]);
-            this.collisionsThisUpdate = new Map([
-                [Sides.Left, new Set()], [Sides.Right, new Set()], [Sides.Top, new Set()], [Sides.Bottom, new Set()], [Sides.Forward, new Set()], [Sides.Back, new Set()]
-            ]);
-        }
+        // momentum
         setVelocity(velocity) { this.velocity = velocity.clone(); return this; }
         getVelocity() { return this.frozen ? PhysBox.FROZEN_VELOCITY : this.velocity; }
+        setGravity(gravity) { this.gravity = gravity; }
+        getGravity() { return this.gravity; }
+        setTerminalVelocity(terminalVelocity) { this.terminalVelocity = terminalVelocity; }
+        getTerminalVelocity() { return this.terminalVelocity; }
+        // status flags
         isActive() { return this.active; }
         disable() { this.active = false; }
         enable() { this.active = true; }
         freeze() { this.frozen = true; this.fire('freeze', true); return this; }
         unfreeze() { this.frozen = false; this.fire('freeze', false); return this; }
         isFrozen() { return this.frozen; }
-        getMoverLevel() { return 1; }
-        dispose() { this.disposed = true; }
-        isDisposed() { return this.disposed; }
+        getCollisionGroup() { return this.collisionGroup; }
+        setCollisionGroup(collisionGroup) { this.collisionGroup = collisionGroup; }
+        getMoverLevel() { return this.moverLevel; }
+        setMoverLevel(moverLevel) { this.moverLevel = moverLevel; }
+        // collision callbacks
         onCollisionStart(side, physBox) { }
         onCollisionHold(side, physBox) {
             if (this.getMoverLevel() < physBox.getMoverLevel()) {
@@ -703,6 +735,7 @@ window.addEventListener('DOMContentLoaded', () => {
             }
         }
         onCollisionStop(side, physBox) { }
+        // collision steps
         beforeCollisions() {
             let tmp = this.collisionsThisUpdate;
             this.collisionsLastUpdate.forEach((collisions, side) => collisions.clear());
@@ -733,9 +766,10 @@ window.addEventListener('DOMContentLoaded', () => {
             if (this.frozen || !this.active)
                 return;
             // resolve in Y axis
-            const yVelocity = this.getVelocity().y;
+            const yVelocity = Math.max(this.getVelocity().y - this.gravity, -this.terminalVelocity);
             if (yVelocity != 0) {
                 this.getPos().y += yVelocity;
+                this.velocity.y = yVelocity;
                 let collisions = game.getCollisions(this, 'y');
                 if (yVelocity < 0) {
                     let hits = collisions.sort((b, a) => a.getSide(Sides.Top) - b.getSide(Sides.Top));
@@ -889,9 +923,12 @@ window.addEventListener('DOMContentLoaded', () => {
                 return particle;
             };
             this.SPS = SPS;
+            this.additionalLogic();
         }
         getFallBoxCount() { return 0; }
         generateFallBox() { return null; }
+        additionalLogic() {
+        }
         isDisposed() { return this.disposed; }
         dispose() {
             this.SPS.dispose();
@@ -916,7 +953,132 @@ window.addEventListener('DOMContentLoaded', () => {
             this.SPS.setParticles();
         }
     }
+    var BoulderState;
+    (function (BoulderState) {
+        BoulderState[BoulderState["Waiting"] = 0] = "Waiting";
+        BoulderState[BoulderState["GoingUp"] = 1] = "GoingUp";
+        BoulderState[BoulderState["GoingDown"] = 2] = "GoingDown";
+    })(BoulderState || (BoulderState = {}));
+    class Boulder extends PhysBox {
+        constructor() {
+            super();
+            this.myState = BoulderState.Waiting;
+            this.resetTimeSeconds = 0;
+            this.setTerminalVelocity(0.3);
+            this.setSize(new BABYLON.Vector3(3, 3, 3));
+            this.setCollisionGroup(CollisionGroups.FloatEnemy);
+            const obj = BABYLON.MeshBuilder.CreateSphere('', { diameter: 3 }, scene);
+            obj.position = this.getPos();
+            const material = new BABYLON.StandardMaterial('', scene);
+            material.diffuseTexture = new BABYLON.Texture('https://cdnb.artstation.com/p/assets/images/images/010/604/427/large/nick-rossi-gam322-nrossi-m11-lava.jpg', scene);
+            material.disableLighting = true;
+            material.emissiveColor = new BABYLON.Color3(1, 1, 1);
+            obj.material = material;
+            this.obj = obj;
+            //Smoke
+            var smokeSystem = new BABYLON.ParticleSystem("particles", 1000, scene);
+            smokeSystem.particleTexture = new BABYLON.Texture("https://raw.githubusercontent.com/lattesipper/endlessplatformer/master/resources/images/flare.png", scene);
+            smokeSystem.emitter = obj; // the starting object, the emitter
+            smokeSystem.minEmitBox = new BABYLON.Vector3(-0.75, 0, -0.75); // Starting all from
+            smokeSystem.maxEmitBox = new BABYLON.Vector3(1, 0, 1); // To...
+            smokeSystem.color1 = new BABYLON.Color4(0.02, 0.02, 0.02, .02);
+            smokeSystem.color2 = new BABYLON.Color4(0.02, 0.02, 0.02, .02);
+            smokeSystem.colorDead = new BABYLON.Color4(0, 0, 0, 0.0);
+            smokeSystem.minSize = 1;
+            smokeSystem.maxSize = 3;
+            smokeSystem.minLifeTime = 0.3;
+            smokeSystem.maxLifeTime = 1.5;
+            smokeSystem.emitRate = 700;
+            smokeSystem.blendMode = BABYLON.ParticleSystem.BLENDMODE_ONEONE;
+            smokeSystem.gravity = new BABYLON.Vector3(0, 0, 0);
+            smokeSystem.direction1 = new BABYLON.Vector3(-1.5, -1 + Math.random(), -1.5);
+            smokeSystem.direction2 = new BABYLON.Vector3(1.5, -1 + Math.random(), 1.5);
+            smokeSystem.minAngularSpeed = 0;
+            smokeSystem.maxAngularSpeed = Math.PI;
+            smokeSystem.minEmitPower = 0.5;
+            smokeSystem.maxEmitPower = 1.5;
+            smokeSystem.updateSpeed = 0.005;
+            var fireSystem = new BABYLON.ParticleSystem("particles", 2000, scene);
+            fireSystem.particleTexture = new BABYLON.Texture("https://raw.githubusercontent.com/lattesipper/endlessplatformer/master/resources/images/flare.png", scene);
+            fireSystem.emitter = obj; // the starting object, the emitter
+            fireSystem.minEmitBox = new BABYLON.Vector3(-1, 0, -1); // Starting all from
+            fireSystem.maxEmitBox = new BABYLON.Vector3(1, 0, 1); // To...
+            fireSystem.color1 = new BABYLON.Color4(1, 0.5, 0, 1.0);
+            fireSystem.color2 = new BABYLON.Color4(1, 0.5, 0, 1.0);
+            fireSystem.colorDead = new BABYLON.Color4(0, 0, 0, 0.0);
+            fireSystem.minSize = 0.3;
+            fireSystem.maxSize = 1;
+            fireSystem.minLifeTime = 0.2;
+            fireSystem.maxLifeTime = 0.4;
+            fireSystem.emitRate = 1200;
+            fireSystem.blendMode = BABYLON.ParticleSystem.BLENDMODE_ONEONE;
+            fireSystem.gravity = new BABYLON.Vector3(0, 0, 0);
+            fireSystem.direction1 = new BABYLON.Vector3(0, -1 + Math.random(), 0);
+            fireSystem.direction2 = new BABYLON.Vector3(0, -1 + Math.random(), 0);
+            fireSystem.minAngularSpeed = 0;
+            fireSystem.maxAngularSpeed = Math.PI;
+            fireSystem.minEmitPower = 1;
+            fireSystem.maxEmitPower = 3;
+            fireSystem.updateSpeed = 0.007;
+            this.smokeSystem = smokeSystem;
+            this.fireSystem = fireSystem;
+            this.resetTimeSeconds = Math.random() * 3;
+            this.obj.isVisible = false;
+        }
+        launch() {
+            if (this.myState != BoulderState.Waiting)
+                return false;
+            this.enable();
+            this.setGravity(0);
+            this.setPos(new BABYLON.Vector3(-5 + Math.random() * 10, game.getLavaLevel() - 30, -5 + Math.random() * 10));
+            this.setVelocity(new BABYLON.Vector3(0, 0.3, 0));
+            this.smokeSystem.start();
+            this.fireSystem.start();
+            this.myState = BoulderState.GoingUp;
+            this.obj.isVisible = true;
+            return true;
+        }
+        afterCollisions() {
+            super.afterCollisions();
+            switch (this.myState) {
+                case BoulderState.Waiting:
+                    this.getPos().y = game.getLavaLevel() - 30;
+                    break;
+                case BoulderState.GoingUp:
+                    if ((this.getPos().y > game.getPlayer().getPos().y + 10)) {
+                        this.setGravity(0.01);
+                        this.myState = BoulderState.GoingDown;
+                    }
+                    break;
+                case BoulderState.GoingDown:
+                    if (this.getPos().y < (game.getLavaLevel() - 30)) {
+                        this.myState = BoulderState.Waiting;
+                        this.resetTimeSeconds = Math.random() * 3;
+                        this.smokeSystem.stop();
+                        this.fireSystem.stop();
+                        this.obj.isVisible = false;
+                    }
+                    break;
+            }
+        }
+    }
     class StartFallBoxCluster extends FallBoxCluster {
+        constructor(...args) {
+            super(...args);
+            this.t = 0;
+        }
+        additionalLogic() {
+            this.bolder = new Boulder();
+            game.addPhysBox(this.bolder);
+        }
+        update() {
+            super.update();
+            t += (1 / 60);
+            if (t >= 5 && Math.random() > 0.5) {
+                this.bolder.launch();
+                t = 0;
+            }
+        }
         getFallBoxCount() { return 200; }
         generateFallBox() {
             const fallbox = new FallBox();
@@ -937,6 +1099,7 @@ window.addEventListener('DOMContentLoaded', () => {
     class FloorBox extends PhysBox {
         constructor() {
             super();
+            this.setCollisionGroup(CollisionGroups.Level);
             const mesh = BABYLON.MeshBuilder.CreateBox('', { size: 1 }, scene);
             const material = new BABYLON.StandardMaterial('', scene);
             material.diffuseTexture = new BABYLON.Texture("https://raw.githubusercontent.com/lattesipper/endlessplatformer/master/resources/images/floorBox.png", scene);
@@ -949,6 +1112,8 @@ window.addEventListener('DOMContentLoaded', () => {
     class FallBox extends PhysBox {
         constructor() {
             super();
+            this.setMoverLevel(2);
+            this.setCollisionGroup(CollisionGroups.Level);
             this.color = new BABYLON.Color4(0.5 + Math.random() * 0.5, 0.5 + Math.random() * 0.5, 0.5 + Math.random() * 0.5, 1);
         }
         onCollisionStart(side, physBox) {
@@ -958,12 +1123,12 @@ window.addEventListener('DOMContentLoaded', () => {
             }
         }
         getColor() { return this.color; }
-        getMoverLevel() { return 2; }
     }
     class Player extends PhysBox {
         constructor() {
             super();
             this.bestHeight = 0;
+            this.setCollisionGroup(CollisionGroups.Player);
             this.mesh = Player.MESH.createInstance('');
             this.mesh.position = this.getPos();
             const particleSystem = new BABYLON.ParticleSystem("particles", 2000, scene);
@@ -991,6 +1156,7 @@ window.addEventListener('DOMContentLoaded', () => {
             this.explosionParticleSystem = particleSystem;
             this.setSize(new BABYLON.Vector3(0.6658418, 0.8655933, 0.6658418));
             this.setPos(new BABYLON.Vector3(0, 3, 0));
+            this.setGravity(Player.GRAVITY);
         }
         static LoadResources() {
             return Promise.all([
@@ -1151,10 +1317,11 @@ window.addEventListener('DOMContentLoaded', () => {
                 avgYSpeed /= count;
                 avgYSpeed -= Player.SIDE_SLIDE_SPEED;
                 this.getVelocity().y = avgYSpeed;
+                this.setGravity(0);
             }
             else {
                 // not sliding, apply GRAVITY as normal
-                this.getVelocity().y = Math.max(this.getVelocity().y - Player.GRAVITY, -Player.MAX_Y_SPEED);
+                this.setGravity(Player.GRAVITY);
             }
             // grounded, apply movement velocity instantaneously
             if (this.getCollisions(Sides.Bottom).size) {
