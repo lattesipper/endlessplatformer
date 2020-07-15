@@ -505,6 +505,8 @@ window.addEventListener('DOMContentLoaded', () => {
                 if (pbox.isActive() && !pbox.isDisposed())
                     pbox.afterCollisions();
             }
+            // update level logic
+            this.currentLevel.update();
         }
         updateSpectating() {
             if (!this.towerFlyByComplte) {
@@ -605,8 +607,6 @@ window.addEventListener('DOMContentLoaded', () => {
                 .setPos(new BABYLON.Vector3(0, 0, 0))
                 .setSize(new BABYLON.Vector3(10, 2, 10));
             this.addPhysBox(bottomBox);
-            // create initial cube cluster
-            this.currentLevel = new StartLevel(10);
             // all is ready, create the player
             const player = new Player();
             player.setPos(new BABYLON.Vector3(0, 0, 0));
@@ -616,6 +616,8 @@ window.addEventListener('DOMContentLoaded', () => {
                 this.changeMode(GameMode.Spectating);
             }));
             this.player = player;
+            // create initial cube cluster
+            this.currentLevel = new StartLevel();
             // play background music
             Game.BACKGROUND_MUSIC.loop = true;
             Game.BACKGROUND_MUSIC.setVolume(0.5);
@@ -920,18 +922,27 @@ window.addEventListener('DOMContentLoaded', () => {
     PhysBox.FROZEN_VELOCITY = BABYLON.Vector3.Zero();
     PhysBox.MAXIMUM_HEIGHT = 5;
     class Level {
-        constructor(startY) {
-            const cubeCount = this.getFallBoxCount();
-            for (let i = 0; i < cubeCount; i++) {
-                const boxB = this.generateFallBox();
-                boxB.setPos(new BABYLON.Vector3(-5 + Math.random() * 10, startY + Math.random() * this.getHeight(), -5 + Math.random() * 10));
-                game.addPhysBox(boxB);
+        constructor() {
+            this.initial = true;
+        }
+        update() {
+            const topBoxY = game.getHighestPhysBox().getPos().y;
+            const spawnOffset = topBoxY + (this.initial ? 10 : 0);
+            if (((topBoxY - game.getPlayer().getPos().y) < 60) || this.initial) {
+                for (let i = 0; i < Level.CHUNK_BOX_COUNT; i++) {
+                    const boxB = this.generateFallBox();
+                    boxB.setPos(new BABYLON.Vector3(-5 + Math.random() * 10, spawnOffset + Math.random() * Level.CHUNK_HEIGHT, -5 + Math.random() * 10));
+                    game.addPhysBox(boxB);
+                }
+                this.initial = false;
             }
         }
     }
+    Level.CHUNK_HEIGHT = 500;
+    Level.CHUNK_BOX_COUNT = 100;
     class StartLevel extends Level {
-        constructor(startY) {
-            super(startY);
+        constructor() {
+            super();
             this.boulders = [];
             for (var i = 0; i < 3; i++) {
                 const boulder = new Boulder();
@@ -949,8 +960,6 @@ window.addEventListener('DOMContentLoaded', () => {
                 }
             }, 5000);
         }
-        getFallBoxCount() { return 200; }
-        getHeight() { return 750; }
         generateFallBox() {
             const fallbox = new FallBoxBasic();
             const rnd = Math.random();
