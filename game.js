@@ -708,34 +708,39 @@ window.addEventListener('DOMContentLoaded', () => {
     CollisionGroups.Player = new CollisionGroups();
     CollisionGroups.Enemy = new CollisionGroups();
     CollisionGroups.FloatEnemy = new CollisionGroups();
+    CollisionGroups.LevelOnly = new CollisionGroups();
     CollisionGroups.Unknown = new CollisionGroups();
     CollisionGroups.collisionMap = new Map([
-        [CollisionGroups.Level, new Set([CollisionGroups.Level, CollisionGroups.Player, CollisionGroups.Enemy])],
+        [CollisionGroups.Level, new Set([CollisionGroups.Level, CollisionGroups.Player, CollisionGroups.Enemy, CollisionGroups.LevelOnly])],
         [CollisionGroups.Player, new Set([CollisionGroups.Level, CollisionGroups.Enemy, CollisionGroups.FloatEnemy])],
         [CollisionGroups.Enemy, new Set([CollisionGroups.Level, CollisionGroups.Player])],
         [CollisionGroups.FloatEnemy, new Set([CollisionGroups.Player])],
+        [CollisionGroups.LevelOnly, new Set([CollisionGroups.Level])],
         [CollisionGroups.Unknown, new Set()]
     ]);
-    CollisionGroups.instance = new CollisionGroups();
+    //public onCollisionStart(side: Sides, physBox: PhysBox) { }
     class PhysBox extends GameObj {
         constructor() {
             super(...arguments);
+            // status flags
+            this.disposed = false;
             this.frozen = false;
             this.active = true;
+            // collision vars
             this.collisionGroup = CollisionGroups.Unknown;
             this.moverLevel = 1;
-            this.velocity = BABYLON.Vector3.Zero();
-            this.terminalVelocity = 5;
-            this.disposed = false;
-            this.gravity = 0;
-            this.poolMesh = null;
-            this.node = new BABYLON.TransformNode('', scene);
             this.collisionsLastUpdate = new Map([
                 [Sides.Left, new Set()], [Sides.Right, new Set()], [Sides.Top, new Set()], [Sides.Bottom, new Set()], [Sides.Forward, new Set()], [Sides.Back, new Set()]
             ]);
             this.collisionsThisUpdate = new Map([
                 [Sides.Left, new Set()], [Sides.Right, new Set()], [Sides.Top, new Set()], [Sides.Bottom, new Set()], [Sides.Forward, new Set()], [Sides.Back, new Set()]
             ]);
+            // momentum
+            this.velocity = BABYLON.Vector3.Zero();
+            this.terminalVelocity = 5;
+            this.gravity = 0;
+            // position & size
+            this.node = new BABYLON.TransformNode('', scene);
         }
         // destructor
         dispose() { this.disposed = true; }
@@ -927,19 +932,22 @@ window.addEventListener('DOMContentLoaded', () => {
         }
         update() {
             const topBoxY = game.getHighestPhysBox().getPos().y;
-            const spawnOffset = topBoxY + (this.initial ? 10 : 0);
-            if (((topBoxY - game.getPlayer().getPos().y) < 60) || this.initial) {
-                for (let i = 0; i < Level.CHUNK_BOX_COUNT; i++) {
-                    const boxB = this.generateFallBox();
-                    boxB.setPos(new BABYLON.Vector3(-5 + Math.random() * 10, spawnOffset + Math.random() * Level.CHUNK_HEIGHT, -5 + Math.random() * 10));
-                    game.addPhysBox(boxB);
+            const spawnOffset = topBoxY + (this.initial ? Level.INITIAL_SPAWN_YOFFSET : 0);
+            const playerDistanceFromTopOfTower = (topBoxY - game.getPlayer().getPos().y);
+            if ((playerDistanceFromTopOfTower < Level.POPULATE_FALLBOXES_PLAYER_DISTANCE_THRESHOLD) || this.initial) {
+                for (let i = 0; i < Level.FALLBOX_GROUP_COUNT; i++) {
+                    const fallBox = this.generateFallBox();
+                    fallBox.setPos(new BABYLON.Vector3(-5 + Math.random() * 10, spawnOffset + Math.random() * Level.FALLBOX_GROUP_HEIGHT, -5 + Math.random() * 10));
+                    game.addPhysBox(fallBox);
                 }
                 this.initial = false;
             }
         }
     }
-    Level.CHUNK_HEIGHT = 500;
-    Level.CHUNK_BOX_COUNT = 100;
+    Level.POPULATE_FALLBOXES_PLAYER_DISTANCE_THRESHOLD = 60;
+    Level.INITIAL_SPAWN_YOFFSET = 10;
+    Level.FALLBOX_GROUP_HEIGHT = 500;
+    Level.FALLBOX_GROUP_COUNT = 100;
     class StartLevel extends Level {
         constructor() {
             super();
@@ -986,7 +994,6 @@ window.addEventListener('DOMContentLoaded', () => {
         constructor() {
             super();
             this.myState = BoulderState.Waiting;
-            this.resetTimeSeconds = 0;
             this.setTerminalVelocity(0.3);
             this.setSize(new BABYLON.Vector3(3, 3, 3));
             this.setCollisionGroup(CollisionGroups.FloatEnemy);
@@ -1045,8 +1052,8 @@ window.addEventListener('DOMContentLoaded', () => {
             fireSystem.updateSpeed = 0.007;
             this.smokeSystem = smokeSystem;
             this.fireSystem = fireSystem;
-            this.resetTimeSeconds = Math.random() * 3;
             this.obj.isVisible = false;
+            this.disable();
         }
         dispose() {
             super.dispose();
@@ -1082,10 +1089,10 @@ window.addEventListener('DOMContentLoaded', () => {
                 case BoulderState.GoingDown:
                     if (this.getPos().y < (game.getLavaLevel() - 30)) {
                         this.myState = BoulderState.Waiting;
-                        this.resetTimeSeconds = Math.random() * 3;
                         this.smokeSystem.stop();
                         this.fireSystem.stop();
                         this.obj.isVisible = false;
+                        this.disable();
                     }
                     break;
             }
@@ -1176,8 +1183,10 @@ window.addEventListener('DOMContentLoaded', () => {
         constructor() {
             super();
             this.bestHeight = 0;
+            this.health = 5;
             this.setCollisionGroup(CollisionGroups.Player);
-            this.mesh = Player.MESH.createInstance('');
+            this.mesh = Player.MESH.clone('');
+            this.mesh.isVisible = true;
             this.mesh.position = this.getPos();
             const particleSystem = new BABYLON.ParticleSystem("particles", 2000, scene);
             particleSystem.particleTexture = new BABYLON.Texture("https://raw.githubusercontent.com/lattesipper/endlessplatformer/master/resources/images/flare.png", scene);
@@ -1234,7 +1243,7 @@ window.addEventListener('DOMContentLoaded', () => {
                         const testMaterial = new BABYLON.StandardMaterial('', scene);
                         testMaterial.diffuseTexture = new BABYLON.Texture('https://raw.githubusercontent.com/lattesipper/endlessplatformer/master/resources/meshes/player.png', scene);
                         testMaterial.ambientColor = new BABYLON.Color3(1, 1, 1);
-                        testMaterial.freeze();
+                        //testMaterial.freeze();
                         meshes[0].material = testMaterial;
                         meshes[0].isVisible = false;
                         Player.MESH = (meshes[0]);
@@ -1259,9 +1268,27 @@ window.addEventListener('DOMContentLoaded', () => {
             this.fire('death', true);
             setTimeout(() => this.explosionParticleSystem.stop(), 150);
         }
+        damadge() {
+            this.health--;
+            if (this.health == 0) {
+                this.kill();
+            }
+            else {
+                this.mesh.visibility = 0.5;
+                this.setCollisionGroup(CollisionGroups.LevelOnly);
+                setTimeout(() => {
+                    this.mesh.visibility = 1;
+                    this.setCollisionGroup(CollisionGroups.Player);
+                }, 2000);
+            }
+        }
         onCollisionStart(side, physBox) {
-            if (!Player.SOUND_HIT_HEAD.isPlaying && side == Sides.Top && physBox instanceof FallBox)
+            if (!Player.SOUND_HIT_HEAD.isPlaying && side == Sides.Top && physBox instanceof FallBox) {
                 Player.SOUND_HIT_HEAD.play();
+            }
+            if (physBox instanceof Boulder) {
+                this.damadge();
+            }
         }
         determineVelocities() {
             let wKey;

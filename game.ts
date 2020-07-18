@@ -735,16 +735,20 @@ class CollisionGroups {
     public static Player: CollisionGroups = new CollisionGroups();
     public static Enemy: CollisionGroups = new CollisionGroups();
     public static FloatEnemy: CollisionGroups = new CollisionGroups();
+    public static LevelOnly: CollisionGroups = new CollisionGroups();
     public static Unknown: CollisionGroups = new CollisionGroups();
     private static collisionMap: Map<CollisionGroups, Set<CollisionGroups>> = new Map([
-        [CollisionGroups.Level, new Set<CollisionGroups>([CollisionGroups.Level, CollisionGroups.Player, CollisionGroups.Enemy])],
+        [CollisionGroups.Level, new Set<CollisionGroups>([CollisionGroups.Level, CollisionGroups.Player, CollisionGroups.Enemy, CollisionGroups.LevelOnly])],
         [CollisionGroups.Player, new Set<CollisionGroups>([CollisionGroups.Level, CollisionGroups.Enemy, CollisionGroups.FloatEnemy])],
         [CollisionGroups.Enemy, new Set<CollisionGroups>([CollisionGroups.Level, CollisionGroups.Player])],
         [CollisionGroups.FloatEnemy, new Set<CollisionGroups>([CollisionGroups.Player])],
+        [CollisionGroups.LevelOnly, new Set<CollisionGroups>([CollisionGroups.Level])],
         [CollisionGroups.Unknown, new Set<CollisionGroups>()]
     ]);
-    private static instance = new CollisionGroups();
 }
+
+
+//public onCollisionStart(side: Sides, physBox: PhysBox) { }
 
 class PhysBox extends GameObj {
     // destructor
@@ -928,44 +932,50 @@ class PhysBox extends GameObj {
     private static FROZEN_VELOCITY: BABYLON.Vector3 = BABYLON.Vector3.Zero();
     public static MAXIMUM_HEIGHT: number = 5;
 
+    // status flags
+    private disposed: boolean = false;
     private frozen: boolean = false;
     private active: boolean = true;
+
+    // collision vars
     private collisionGroup: CollisionGroups = CollisionGroups.Unknown;
     private moverLevel: number = 1;
-    private velocity: BABYLON.Vector3 = BABYLON.Vector3.Zero();
-    private terminalVelocity: number = 5;
-    private disposed: boolean = false;
-    private gravity: number = 0;
-
-    private poolMesh: BABYLON.TransformNode = null;
-
-    private node: BABYLON.TransformNode = new BABYLON.TransformNode('', scene);
-
     private collisionsLastUpdate: Map<Sides, Set<PhysBox>> = new Map([
         [Sides.Left, new Set<PhysBox>()], [Sides.Right, new Set<PhysBox>()], [Sides.Top, new Set<PhysBox>()], [Sides.Bottom, new Set<PhysBox>()], [Sides.Forward, new Set<PhysBox>()], [Sides.Back, new Set<PhysBox>()]
     ]);
     private collisionsThisUpdate: Map<Sides, Set<PhysBox>> = new Map([
         [Sides.Left, new Set<PhysBox>()], [Sides.Right, new Set<PhysBox>()], [Sides.Top, new Set<PhysBox>()], [Sides.Bottom, new Set<PhysBox>()], [Sides.Forward, new Set<PhysBox>()], [Sides.Back, new Set<PhysBox>()]
     ]);
+
+    // momentum
+    private velocity: BABYLON.Vector3 = BABYLON.Vector3.Zero();
+    private terminalVelocity: number = 5;
+    private gravity: number = 0;
+
+    // position & size
+    private node: BABYLON.TransformNode = new BABYLON.TransformNode('', scene);
 }
 
 abstract class Level {
     protected abstract generateFallBox(): FallBox;
     public update() {
         const topBoxY = game.getHighestPhysBox().getPos().y;
-        const spawnOffset = topBoxY + (this.initial ? 10 : 0);
-        if (((topBoxY - game.getPlayer().getPos().y) < 60) || this.initial) {
-            for (let i = 0; i < Level.CHUNK_BOX_COUNT; i++) {
-                const boxB = this.generateFallBox();
-                boxB.setPos(new BABYLON.Vector3(-5 + Math.random() * 10, spawnOffset + Math.random() * Level.CHUNK_HEIGHT, -5 + Math.random() * 10));
-                game.addPhysBox(boxB);
+        const spawnOffset = topBoxY + (this.initial ? Level.INITIAL_SPAWN_YOFFSET : 0);
+        const playerDistanceFromTopOfTower = (topBoxY - game.getPlayer().getPos().y);
+        if ((playerDistanceFromTopOfTower < Level.POPULATE_FALLBOXES_PLAYER_DISTANCE_THRESHOLD) || this.initial) {
+            for (let i = 0; i < Level.FALLBOX_GROUP_COUNT; i++) {
+                const fallBox = this.generateFallBox();
+                fallBox.setPos(new BABYLON.Vector3(-5 + Math.random() * 10, spawnOffset + Math.random() * Level.FALLBOX_GROUP_HEIGHT, -5 + Math.random() * 10));
+                game.addPhysBox(fallBox);
             }
             this.initial = false;
         }
     }
     private initial : boolean = true;
-    private static CHUNK_HEIGHT: number = 500;
-    private static CHUNK_BOX_COUNT: number = 100;
+    private static POPULATE_FALLBOXES_PLAYER_DISTANCE_THRESHOLD: number = 60;
+    private static INITIAL_SPAWN_YOFFSET: number = 10;
+    private static FALLBOX_GROUP_HEIGHT: number = 500;
+    private static FALLBOX_GROUP_COUNT: number = 100;
 }
 class StartLevel extends Level {
     public constructor() {
@@ -1068,8 +1078,8 @@ class Boulder extends PhysBox {
         fireSystem.updateSpeed = 0.007;
         this.smokeSystem = smokeSystem;
         this.fireSystem = fireSystem;
-        this.resetTimeSeconds = Math.random() * 3;
         this.obj.isVisible = false;
+        this.disable();
     }
     public dispose() {
         super.dispose();
@@ -1105,10 +1115,10 @@ class Boulder extends PhysBox {
             case BoulderState.GoingDown:
                 if (this.getPos().y < (game.getLavaLevel() - 30)) {
                     this.myState = BoulderState.Waiting;
-                    this.resetTimeSeconds = Math.random() * 3;
                     this.smokeSystem.stop();
                     this.fireSystem.stop();
                     this.obj.isVisible = false;
+                    this.disable();
                 }
                 break;
         }
@@ -1116,7 +1126,6 @@ class Boulder extends PhysBox {
     private smokeSystem: BABYLON.ParticleSystem;
     private fireSystem: BABYLON.ParticleSystem;
     private myState: BoulderState = BoulderState.Waiting;
-    private resetTimeSeconds: number = 0;
     private obj: BABYLON.Mesh;
 }
 
@@ -1235,7 +1244,7 @@ class Player extends PhysBox {
                     const testMaterial = new BABYLON.StandardMaterial('', scene);
                     testMaterial.diffuseTexture = new BABYLON.Texture('https://raw.githubusercontent.com/lattesipper/endlessplatformer/master/resources/meshes/player.png', scene);
                     testMaterial.ambientColor = new BABYLON.Color3(1, 1, 1);
-                    testMaterial.freeze();
+                    //testMaterial.freeze();
                     meshes[0].material = testMaterial;
                     meshes[0].isVisible = false;
                     Player.MESH = <BABYLON.Mesh>(meshes[0]);
@@ -1253,7 +1262,8 @@ class Player extends PhysBox {
         super();
         this.setCollisionGroup(CollisionGroups.Player);
 
-        this.mesh = Player.MESH.createInstance('');
+        this.mesh = Player.MESH.clone('');
+        this.mesh.isVisible = true;
         this.mesh.position = this.getPos();
 
         const particleSystem = new BABYLON.ParticleSystem("particles", 2000, scene);
@@ -1295,12 +1305,36 @@ class Player extends PhysBox {
         this.fire('death', true);
         setTimeout(() => this.explosionParticleSystem.stop(), 150);
     }
-    public onCollisionStart(side: Sides, physBox: PhysBox) { 
-        if (!Player.SOUND_HIT_HEAD.isPlaying && side == Sides.Top && physBox instanceof FallBox)
-            Player.SOUND_HIT_HEAD.play();
+
+    public damadge() : boolean {
+        // we may be damadged by multiple entities in the same frame, before invulnerability
+        // has been applied. prevent multiple damadges in the same frame
+        if (this.getCollisionGroup() == CollisionGroups.LevelOnly)
+            return false;
+        this.health--;
+        if (this.health == 0) {
+            this.kill();
+        } else {
+            this.mesh.visibility = 0.5;
+            this.setCollisionGroup(CollisionGroups.LevelOnly);
+            setTimeout(() => {
+                this.mesh.visibility = 1;
+                this.setCollisionGroup(CollisionGroups.Player);
+            }, 2000);
+        }
+        return true;
     }
 
-    public determineVelocities() {
+    public onCollisionStart(side: Sides, physBox: PhysBox) { 
+        if (!Player.SOUND_HIT_HEAD.isPlaying && side == Sides.Top && physBox instanceof FallBox) {
+            Player.SOUND_HIT_HEAD.play();
+        }
+        if (physBox instanceof Boulder) {
+            this.damadge();
+        }
+    }
+
+    private determineVelocities() {
         let wKey; let aKey; let sKey; let dKey;
         switch(camera.getRotationIndex()) {
             case 1: wKey = 'd'; aKey = 'w'; sKey = 'a';  dKey = 's'; break;
@@ -1465,6 +1499,7 @@ class Player extends PhysBox {
     private mesh: BABYLON.AbstractMesh;
     private bestHeight: number = 0;
     private explosionParticleSystem: BABYLON.ParticleSystem;
+    private health: number = 5;
 }
 
 Promise.all([
