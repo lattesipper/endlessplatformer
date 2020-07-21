@@ -610,7 +610,7 @@ window.addEventListener('DOMContentLoaded', () => {
             // all is ready, create the player
             const player = new Player();
             player.setPos(new BABYLON.Vector3(0, 0, 0));
-            player.setSide(Sides.Bottom, bottomBox.getSide(Sides.Top));
+            player.setSide(Sides.Bottom, bottomBox.getSide(Sides.Top) + 0.5);
             this.addPhysBox(player);
             this.callbackFunctions.push(player.onEvent('death', () => {
                 this.changeMode(GameMode.Spectating);
@@ -760,12 +760,12 @@ window.addEventListener('DOMContentLoaded', () => {
             if (!this.collisionGroup.collides(otherBox.collisionGroup))
                 return false;
             // a collision occurs if there is no axis that seperates the two bounding boxes
-            return (!(this.getSide(Sides.Left) > otherBox.getSide(Sides.Right)) &&
-                !(this.getSide(Sides.Right) < otherBox.getSide(Sides.Left)) &&
-                !(this.getSide(Sides.Back) > otherBox.getSide(Sides.Forward)) &&
-                !(this.getSide(Sides.Forward) < otherBox.getSide(Sides.Back)) &&
-                !(this.getSide(Sides.Bottom) > otherBox.getSide(Sides.Top)) &&
-                !(this.getSide(Sides.Top) < otherBox.getSide(Sides.Bottom)));
+            return (!(this.getSide(Sides.Left) > otherBox.getSide(Sides.Right) - 0.001) &&
+                !(this.getSide(Sides.Right) < otherBox.getSide(Sides.Left) + 0.001) &&
+                !(this.getSide(Sides.Back) > otherBox.getSide(Sides.Forward) - 0.001) &&
+                !(this.getSide(Sides.Forward) < otherBox.getSide(Sides.Back) + 0.001) &&
+                !(this.getSide(Sides.Bottom) > otherBox.getSide(Sides.Top) - 0.001) &&
+                !(this.getSide(Sides.Top) < otherBox.getSide(Sides.Bottom) + 0.001));
         }
         // momentum
         setVelocity(velocity) { this.velocity = velocity.clone(); return this; }
@@ -830,6 +830,11 @@ window.addEventListener('DOMContentLoaded', () => {
         resolveCollisions(t) {
             if (this.frozen || !this.active)
                 return;
+            // ignore physboxes that we are already inside at the start of the update, they must have teleported on-top of us
+            const ignoreCollisions = new Set(game.getCollisions(this, 'x'));
+            if (ignoreCollisions.size) {
+                alert("WTF");
+            }
             // resolve in Y axis
             const yVelocity = Math.max(this.getVelocity().y - this.gravity, -this.terminalVelocity);
             if (yVelocity != 0) {
@@ -837,24 +842,24 @@ window.addEventListener('DOMContentLoaded', () => {
                 this.velocity.y = yVelocity;
                 let collisions = game.getCollisions(this, 'y');
                 if (yVelocity < 0) {
-                    let hits = collisions.sort((b, a) => a.getSide(Sides.Top) - b.getSide(Sides.Top));
+                    let hits = collisions.sort((b, a) => a.getSide(Sides.Top) - b.getSide(Sides.Top)).filter(a => !ignoreCollisions.has(a));
                     for (let i = 0; i < hits.length; i++) {
                         if (hits[i].getPos().y == hits[0].getPos().y) {
                             this.collisionsThisUpdate.get(Sides.Bottom).add(hits[i]);
                             hits[i].notifyOfCollision(Sides.Top, this);
-                            this.setSide(Sides.Bottom, hits[i].getSide(Sides.Top) + 0.001);
+                            this.setSide(Sides.Bottom, hits[i].getSide(Sides.Top));
                         }
                         else
                             break;
                     }
                 }
                 else if (yVelocity > 0) {
-                    let hits = collisions.sort((a, b) => a.getSide(Sides.Bottom) - b.getSide(Sides.Bottom));
+                    let hits = collisions.sort((a, b) => a.getSide(Sides.Bottom) - b.getSide(Sides.Bottom)).filter(a => !ignoreCollisions.has(a));
                     for (let i = 0; i < hits.length; i++) {
                         if (hits[i].getPos().y == hits[0].getPos().y) {
                             this.collisionsThisUpdate.get(Sides.Top).add(hits[i]);
                             hits[i].notifyOfCollision(Sides.Bottom, this);
-                            this.setSide(Sides.Top, hits[i].getSide(Sides.Bottom) - 0.001);
+                            this.setSide(Sides.Top, hits[i].getSide(Sides.Bottom));
                         }
                         else
                             break;
@@ -867,24 +872,24 @@ window.addEventListener('DOMContentLoaded', () => {
                 this.getPos().x += xVelocity;
                 let collisions = game.getCollisions(this, 'x');
                 if (xVelocity < 0) {
-                    let hits = collisions.sort((b, a) => a.getSide(Sides.Right) - b.getSide(Sides.Right));
+                    let hits = collisions.sort((b, a) => a.getSide(Sides.Right) - b.getSide(Sides.Right)).filter(a => !ignoreCollisions.has(a));
                     for (let i = 0; i < hits.length; i++) {
                         if (hits[i].getPos().y == hits[0].getPos().y) {
                             this.collisionsThisUpdate.get(Sides.Left).add(hits[i]);
                             hits[i].notifyOfCollision(Sides.Right, this);
-                            this.setSide(Sides.Left, hits[i].getSide(Sides.Right) + 0.001);
+                            this.setSide(Sides.Left, hits[i].getSide(Sides.Right));
                         }
                         else
                             break;
                     }
                 }
                 else if (xVelocity > 0) {
-                    let hits = collisions.sort((a, b) => a.getSide(Sides.Left) - b.getSide(Sides.Left));
+                    let hits = collisions.sort((a, b) => a.getSide(Sides.Left) - b.getSide(Sides.Left)).filter(a => !ignoreCollisions.has(a));
                     for (let i = 0; i < hits.length; i++) {
                         if (hits[i].getPos().y == hits[0].getPos().y) {
                             this.collisionsThisUpdate.get(Sides.Right).add(hits[i]);
                             hits[i].notifyOfCollision(Sides.Left, this);
-                            this.setSide(Sides.Right, hits[i].getSide(Sides.Left) - 0.001);
+                            this.setSide(Sides.Right, hits[i].getSide(Sides.Left));
                         }
                         else
                             break;
@@ -897,24 +902,24 @@ window.addEventListener('DOMContentLoaded', () => {
                 this.getPos().z += zVelocity;
                 let collisions = game.getCollisions(this, 'z');
                 if (zVelocity < 0) {
-                    let hits = collisions.sort((b, a) => a.getSide(Sides.Forward) - b.getSide(Sides.Forward));
+                    let hits = collisions.sort((b, a) => a.getSide(Sides.Forward) - b.getSide(Sides.Forward)).filter(a => !ignoreCollisions.has(a));
                     for (let i = 0; i < hits.length; i++) {
                         if (hits[i].getPos().y == hits[0].getPos().y) {
                             this.collisionsThisUpdate.get(Sides.Back).add(hits[i]);
                             hits[i].notifyOfCollision(Sides.Forward, this);
-                            this.setSide(Sides.Back, hits[i].getSide(Sides.Forward) + 0.001);
+                            this.setSide(Sides.Back, hits[i].getSide(Sides.Forward));
                         }
                         else
                             break;
                     }
                 }
                 else if (zVelocity > 0) {
-                    let hits = collisions.sort((a, b) => a.getSide(Sides.Back) - b.getSide(Sides.Back));
+                    let hits = collisions.sort((a, b) => a.getSide(Sides.Back) - b.getSide(Sides.Back)).filter(a => !ignoreCollisions.has(a));
                     for (let i = 0; i < hits.length; i++) {
                         if (hits[i].getPos().y == hits[0].getPos().y) {
                             this.collisionsThisUpdate.get(Sides.Forward).add(hits[i]);
                             hits[i].notifyOfCollision(Sides.Back, this);
-                            this.setSide(Sides.Forward, hits[i].getSide(Sides.Back) - 0.001);
+                            this.setSide(Sides.Forward, hits[i].getSide(Sides.Back));
                         }
                         else
                             break;
@@ -928,6 +933,7 @@ window.addEventListener('DOMContentLoaded', () => {
     PhysBox.MAXIMUM_HEIGHT = 5;
     class Level {
         constructor() {
+            this.fallboxes = [];
             this.initial = true;
         }
         update() {
@@ -935,10 +941,14 @@ window.addEventListener('DOMContentLoaded', () => {
             const spawnOffset = topBoxY + (this.initial ? Level.INITIAL_SPAWN_YOFFSET : 0);
             const playerDistanceFromTopOfTower = (topBoxY - game.getPlayer().getPos().y);
             if ((playerDistanceFromTopOfTower < Level.POPULATE_FALLBOXES_PLAYER_DISTANCE_THRESHOLD) || this.initial) {
+                this.fallboxes = [];
                 for (let i = 0; i < Level.FALLBOX_GROUP_COUNT; i++) {
                     const fallBox = this.generateFallBox();
-                    fallBox.setPos(new BABYLON.Vector3(-5 + Math.random() * 10, spawnOffset + Math.random() * Level.FALLBOX_GROUP_HEIGHT, -5 + Math.random() * 10));
+                    do {
+                        fallBox.setPos(new BABYLON.Vector3(-5 + Math.random() * 10, spawnOffset + Math.random() * Level.FALLBOX_GROUP_HEIGHT, -5 + Math.random() * 10));
+                    } while (this.fallboxes.some(otherBox => fallBox.intersects(otherBox)));
                     game.addPhysBox(fallBox);
+                    this.fallboxes.push(fallBox);
                 }
                 this.initial = false;
             }
@@ -980,7 +990,7 @@ window.addEventListener('DOMContentLoaded', () => {
             else {
                 fallbox.setSize(BABYLON.Vector3.One().scale(5));
             }
-            fallbox.setVelocity(new BABYLON.Vector3(0, -0.075, 0));
+            fallbox.setVelocity(new BABYLON.Vector3(0, -0.1, 0));
             return fallbox;
         }
     }
@@ -1218,6 +1228,11 @@ window.addEventListener('DOMContentLoaded', () => {
         static LoadResources() {
             return Promise.all([
                 new Promise((resolve) => {
+                    Player.SOUND_DAMAGE = new BABYLON.Sound("", "https://raw.githubusercontent.com/lattesipper/endlessplatformer/master/resources/sounds/damage.wav", scene, resolve, {
+                        loop: false, autoplay: false, volume: 0.5
+                    });
+                }),
+                new Promise((resolve) => {
                     Player.SOUND_JUMP = new BABYLON.Sound("", "https://raw.githubusercontent.com/lattesipper/endlessplatformer/master/resources/sounds/jump.wav", scene, resolve, {
                         loop: false,
                         autoplay: false,
@@ -1268,7 +1283,11 @@ window.addEventListener('DOMContentLoaded', () => {
             this.fire('death', true);
             setTimeout(() => this.explosionParticleSystem.stop(), 150);
         }
-        damadge() {
+        damadge(damadger = null) {
+            // we may be damadged by multiple entities in the same frame, before invulnerability
+            // has been applied. prevent multiple damadges in the same frame
+            if (this.getCollisionGroup() == CollisionGroups.LevelOnly)
+                return false;
             this.health--;
             if (this.health == 0) {
                 this.kill();
@@ -1280,14 +1299,19 @@ window.addEventListener('DOMContentLoaded', () => {
                     this.mesh.visibility = 1;
                     this.setCollisionGroup(CollisionGroups.Player);
                 }, 2000);
+                if (damadger) {
+                    this.setVelocity(this.getPos().subtract(damadger.getPos()).normalize().scale(Player.DAMAGE_MOVE_IMPULSE));
+                }
+                Player.SOUND_DAMAGE.play();
             }
+            return true;
         }
         onCollisionStart(side, physBox) {
             if (!Player.SOUND_HIT_HEAD.isPlaying && side == Sides.Top && physBox instanceof FallBox) {
                 Player.SOUND_HIT_HEAD.play();
             }
             if (physBox instanceof Boulder) {
-                this.damadge();
+                this.damadge(physBox);
             }
         }
         determineVelocities() {
@@ -1481,6 +1505,8 @@ window.addEventListener('DOMContentLoaded', () => {
     Player.SIDE_JUMP_IMPULSE = 0.4;
     Player.SIDE_XZ_IMPULSE = 0.2;
     Player.SIDE_SLIDE_SPEED = 0.05;
+    // Damage
+    Player.DAMAGE_MOVE_IMPULSE = 0.05;
     // Gravity & Max speed
     Player.GRAVITY = 0.008;
     Player.MAX_Y_SPEED = 0.5;
