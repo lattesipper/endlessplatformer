@@ -371,15 +371,16 @@ class Sides {
     public static Left = new Sides('x', -1);        public static Right = new Sides('x', 1);
     public static Forward = new Sides('z', 1);      public static Back = new Sides('z', -1);
     public static Top = new Sides('y', 1);          public static Bottom = new Sides('y', -1);
+    public static All : Array<Sides> = [Sides.Left, Sides.Right, Sides.Forward, Sides.Back, Sides.Top, Sides.Bottom];
     public dim : string;
     public direction : number;
 }
 
+// Game class, responsible for managing contained phys-objects
 enum GameMode {
     Playing,
     Spectating
 }
-// Game class, responsible for managing contained phys-objects
 class Game {
     public static LoadResources() : Promise<any> {
         return Promise.all([
@@ -616,7 +617,8 @@ class Game {
 
         // play background music
         Game.BACKGROUND_MUSIC.loop = true;
-        Game.BACKGROUND_MUSIC.setVolume(0.5);
+        Game.BACKGROUND_MUSIC.setVolume(0); // FINDME
+        // Game.BACKGROUND_MUSIC.setVolume(0.5);
         Game.BACKGROUND_MUSIC.play();
         camera.resetRotationindex();
         camera.setBeta(0.65);
@@ -660,33 +662,26 @@ class Game {
         return Math.min(low, this.physBoxesSortedY.length-1);
     }
     // SWEEP AND PRUNE
-    public getCollisions(physBox: PhysBox, dim: string) {
+    public getCollisions(physBox: PhysBox) {
         let yIndex = this.physBoxToYIndex.get(physBox);
         let collisions = [];
         let tests = 0;
-        if (dim != 'y' || physBox.getVelocity().y < 0) {
-            for (let i = yIndex; i >= 0; i--) {
-                let candiate = this.physBoxesSortedY[i];
-                tests++;
-                if (candiate.isActive() && physBox.intersects(candiate))
-                    collisions.push(candiate);
-                if (physBox.getSide(Sides.Bottom) > (candiate.getPos().y + (PhysBox.MAXIMUM_HEIGHT/2)))
-                    break;
-            }
+        for (let i = yIndex; i >= 0; i--) {
+            let candiate = this.physBoxesSortedY[i];
+            tests++;
+            if (candiate.isActive() && physBox.intersects(candiate))
+                collisions.push(candiate);
+            if (physBox.getSide(Sides.Bottom) > (candiate.getPos().y + (PhysBox.MAXIMUM_HEIGHT/2)))
+                break;
         }
-        if (dim != 'y' || physBox.getVelocity().y > 0) {
-            for (let i = yIndex; i < this.physBoxesSortedY.length; i++) {
-                tests++;
-                let candiate = this.physBoxesSortedY[i];
-                if (candiate.isActive() && physBox.intersects(candiate))
-                    collisions.push(candiate);
-                if (physBox.getSide(Sides.Top) < (candiate.getPos().y - (PhysBox.MAXIMUM_HEIGHT/2)))
-                    break;
-            }
+        for (let i = yIndex; i < this.physBoxesSortedY.length; i++) {
+            tests++;
+            let candiate = this.physBoxesSortedY[i];
+            if (candiate.isActive() && physBox.intersects(candiate))
+                collisions.push(candiate);
+            if (physBox.getSide(Sides.Top) < (candiate.getPos().y - (PhysBox.MAXIMUM_HEIGHT/2)))
+                break;
         }
-        // if (physBox instanceof Player && Math.random() > 0.99) {
-        //     console.log(tests);
-        // }
         return collisions;
     }
 
@@ -747,9 +742,6 @@ class CollisionGroups {
     ]);
 }
 
-
-//public onCollisionStart(side: Sides, physBox: PhysBox) { }
-
 class PhysBox extends GameObj {
     // destructor
     public dispose() { this.disposed = true; }
@@ -760,25 +752,8 @@ class PhysBox extends GameObj {
     public setPos(pos: BABYLON.Vector3) : PhysBox { this.node.position.copyFrom(pos); return this; }
     public setSize(size: BABYLON.Vector3) : PhysBox { this.node.scaling.copyFrom(size); return this; }
     public getSize() : BABYLON.Vector3 { return this.node.scaling; }
-    public getSide(side : Sides) { return this.node.position[side.dim] + (this.node.scaling[side.dim] * 0.5 * side.direction) }
+    public getSide(side : Sides) { return this.node.position[side.dim] + (this.node.scaling[side.dim] * 0.5 * side.direction) + this.collisionBuffers.get(side); }
     public setSide(side : Sides, value : number) { this.node.position[side.dim] = value - (this.node.scaling[side.dim] * 0.5 * side.direction); }
-    public intersects(otherBox: PhysBox) : boolean {
-        // physboxes can't collide with themselves
-        if (otherBox == this)
-            return false;
-        // the collision groups of the two physboxes must collide
-        if (!this.collisionGroup.collides(otherBox.collisionGroup))
-            return false;
-        // a collision occurs if there is no axis that seperates the two bounding boxes
-        return (
-            !(this.getSide(Sides.Left) > otherBox.getSide(Sides.Right) - 0.001) &&
-            !(this.getSide(Sides.Right) < otherBox.getSide(Sides.Left) + 0.001) &&
-            !(this.getSide(Sides.Back) > otherBox.getSide(Sides.Forward) - 0.001) &&
-            !(this.getSide(Sides.Forward) < otherBox.getSide(Sides.Back) + 0.001) &&
-            !(this.getSide(Sides.Bottom) > otherBox.getSide(Sides.Top) - 0.001) &&
-            !(this.getSide(Sides.Top) < otherBox.getSide(Sides.Bottom) + 0.001)
-        );
-    }
 
     // momentum
     public setVelocity(velocity: BABYLON.Vector3) : PhysBox { this.velocity = velocity.clone(); return this; }
@@ -796,11 +771,33 @@ class PhysBox extends GameObj {
     public unfreeze() : PhysBox { this.frozen = false; this.fire('freeze', false); return this; }
     public isFrozen() : boolean { return this.frozen; }
 
+    // collisions
     public getCollisionGroup() : CollisionGroups { return this.collisionGroup; }
     public setCollisionGroup(collisionGroup : CollisionGroups) { this.collisionGroup = collisionGroup; }
     public getMoverLevel() : number { return this.moverLevel; }
     public setMoverLevel(moverLevel: number) { this.moverLevel = moverLevel; }
+    public getCollisionBuffer(side: Sides) : number { return this.collisionBuffers.get(side); }
+    public setCollisionBuffer(side: Sides, extent: number) { return this.collisionBuffers.set(side, extent); }
+    public clearCollisionBuffer() { Sides.All.forEach(side => this.collisionBuffers.set(side, 0)); }
+    public intersects(otherBox: PhysBox) : boolean {
+        // physboxes can't collide with themselves
+        if (otherBox == this)
+            return false;
+        // the collision groups of the two physboxes must collide
+        if (!this.collisionGroup.collides(otherBox.collisionGroup))
+            return false;
+        // a collision occurs if there is no axis that seperates the two bounding boxes
+        return (
+            !((this.getSide(Sides.Left) + PhysBox.COLLISION_SAFETY_BUFFER) > (otherBox.getSide(Sides.Right) - PhysBox.COLLISION_SAFETY_BUFFER)) &&
+            !((this.getSide(Sides.Right) - PhysBox.COLLISION_SAFETY_BUFFER) < (otherBox.getSide(Sides.Left) + PhysBox.COLLISION_SAFETY_BUFFER)) &&
+            !((this.getSide(Sides.Back) + PhysBox.COLLISION_SAFETY_BUFFER) > (otherBox.getSide(Sides.Forward) - PhysBox.COLLISION_SAFETY_BUFFER)) &&
+            !((this.getSide(Sides.Forward) - PhysBox.COLLISION_SAFETY_BUFFER) < (otherBox.getSide(Sides.Back) + PhysBox.COLLISION_SAFETY_BUFFER)) &&
+            !((this.getSide(Sides.Bottom) + PhysBox.COLLISION_SAFETY_BUFFER) > (otherBox.getSide(Sides.Top) - PhysBox.COLLISION_SAFETY_BUFFER)) &&
+            !((this.getSide(Sides.Top) - PhysBox.COLLISION_SAFETY_BUFFER) < (otherBox.getSide(Sides.Bottom) + PhysBox.COLLISION_SAFETY_BUFFER))
+        );
+    }
 
+    // observer callbacks
     public startObservation() {}
     public endObservation() {}
 
@@ -820,12 +817,14 @@ class PhysBox extends GameObj {
 
     // collision steps
     public beforeCollisions() {
+        // swap collision lists for last update and this update, and clear the later
         let tmp = this.collisionsThisUpdate;
         this.collisionsLastUpdate.forEach((collisions, side) => collisions.clear());
         this.collisionsThisUpdate = this.collisionsLastUpdate;
         this.collisionsLastUpdate = tmp;
     }
     public afterCollisions() {
+        // determine collisions started and held
         this.collisionsThisUpdate.forEach((collisions, side) => {
             collisions.forEach((collision) => {
                 if (!this.collisionsLastUpdate.get(side).has(collision))
@@ -834,6 +833,7 @@ class PhysBox extends GameObj {
                     this.onCollisionHold(side, collision);
             });
         });
+        // determine collisions stopped
         this.collisionsLastUpdate.forEach((collisions, side) => {
             collisions.forEach((collision) => {
                 if (!this.collisionsThisUpdate.get(side).has(collision))
@@ -850,87 +850,64 @@ class PhysBox extends GameObj {
     public resolveCollisions(t : number) {
         if (this.frozen || !this.active)
             return;
-        // ignore physboxes that we are already inside at the start of the update, they must have teleported on-top of us
-        const ignoreCollisions = new Set(game.getCollisions(this, 'x'));
-        if (ignoreCollisions.size) {
-            alert("WTF");
-        }
+
+        // update velocity
+        this.velocity.y = Math.max(this.getVelocity().y - this.gravity, -this.terminalVelocity);
+
+        // extend our collision boundaries so they encompass all physboxes we may collide with after the velocity has been applied
+        if (this.getVelocity().x >= 0)
+            this.setCollisionBuffer(Sides.Right, this.getVelocity().x + PhysBox.COLLISION_SWEEP_SAFETY_BUFFER);
+        else
+            this.setCollisionBuffer(Sides.Left, this.getVelocity().x - PhysBox.COLLISION_SWEEP_SAFETY_BUFFER);
+        if (this.getVelocity().y >= 0)
+            this.setCollisionBuffer(Sides.Top, this.getVelocity().y + PhysBox.COLLISION_SWEEP_SAFETY_BUFFER);
+        else
+            this.setCollisionBuffer(Sides.Bottom, this.getVelocity().y - PhysBox.COLLISION_SWEEP_SAFETY_BUFFER);
+        if (this.getVelocity().z >= 0)
+            this.setCollisionBuffer(Sides.Forward, this.getVelocity().z + PhysBox.COLLISION_SWEEP_SAFETY_BUFFER);
+        else
+            this.setCollisionBuffer(Sides.Back, this.getVelocity().z - PhysBox.COLLISION_SWEEP_SAFETY_BUFFER);
+        const possibleCollisions = game.getCollisions(this);
+        this.clearCollisionBuffer();
+
+        // if we are already colliding with a physbox before applying velocity, we are stuck within one. Don't apply velocities
+        if (possibleCollisions.some(physbox => physbox.intersects(this)))
+            return;
         // resolve in Y axis
-        const yVelocity = Math.max(this.getVelocity().y - this.gravity, -this.terminalVelocity);
-        if (yVelocity != 0) {
-            this.getPos().y += yVelocity;
-            this.velocity.y = yVelocity;
-            let collisions = game.getCollisions(this, 'y');
-            if (yVelocity < 0) {
-                let hits = collisions.sort((b, a) => a.getSide(Sides.Top) - b.getSide(Sides.Top)).filter(a => !ignoreCollisions.has(a));
-                for (let i = 0; i < hits.length; i++) {
-                    if (hits[i].getPos().y == hits[0].getPos().y) {
-                        this.collisionsThisUpdate.get(Sides.Bottom).add(hits[i]);
-                        hits[i].notifyOfCollision(Sides.Top, this);
-                        this.setSide(Sides.Bottom, hits[i].getSide(Sides.Top));
-                    } else break;
-                }
-            } else if (yVelocity > 0) {
-                let hits = collisions.sort((a, b) => a.getSide(Sides.Bottom) - b.getSide(Sides.Bottom)).filter(a => !ignoreCollisions.has(a));
-                for (let i = 0; i < hits.length; i++) {
-                    if (hits[i].getPos().y == hits[0].getPos().y) {
-                        this.collisionsThisUpdate.get(Sides.Top).add(hits[i]);
-                        hits[i].notifyOfCollision(Sides.Bottom, this);
-                        this.setSide(Sides.Top, hits[i].getSide(Sides.Bottom));
-                    } else break;
-                }
-            }
-        }
+        const yVelocity = this.getVelocity().y;
+        this.getPos().y += yVelocity;
+        if (yVelocity > 0)
+            this.resolveCollisionsForSide(possibleCollisions, Sides.Top);
+        else if (yVelocity < 0)
+            this.resolveCollisionsForSide(possibleCollisions, Sides.Bottom);
         // resolve in X axis
         const xVelocity = this.getVelocity().x;
-        if (xVelocity != 0) {
-            this.getPos().x += xVelocity;
-            let collisions = game.getCollisions(this, 'x');
-            if (xVelocity < 0) {
-                let hits = collisions.sort((b, a) => a.getSide(Sides.Right) - b.getSide(Sides.Right)).filter(a => !ignoreCollisions.has(a));
-                for (let i = 0; i < hits.length; i++) {
-                    if (hits[i].getPos().y == hits[0].getPos().y) {
-                        this.collisionsThisUpdate.get(Sides.Left).add(hits[i]);
-                        hits[i].notifyOfCollision(Sides.Right, this);
-                        this.setSide(Sides.Left, hits[i].getSide(Sides.Right));
-                    } else break;
-                }
-            } else if (xVelocity > 0) {
-                let hits = collisions.sort((a, b) => a.getSide(Sides.Left) - b.getSide(Sides.Left)).filter(a => !ignoreCollisions.has(a));
-                for (let i = 0; i < hits.length; i++) {
-                    if (hits[i].getPos().y == hits[0].getPos().y) {
-                        this.collisionsThisUpdate.get(Sides.Right).add(hits[i]);
-                        hits[i].notifyOfCollision(Sides.Left, this);
-                        this.setSide(Sides.Right, hits[i].getSide(Sides.Left));
-                    } else break;
-                }
-            }
-        }
+        this.getPos().x += xVelocity;
+        if (xVelocity > 0) 
+            this.resolveCollisionsForSide(possibleCollisions, Sides.Right);
+        else if (xVelocity < 0)
+            this.resolveCollisionsForSide(possibleCollisions, Sides.Left);
         // resolve in Z axis
         const zVelocity = this.getVelocity().z;
-        if (zVelocity != 0) {
-            this.getPos().z += zVelocity;
-            let collisions = game.getCollisions(this, 'z');
-            if (zVelocity < 0) {
-                let hits = collisions.sort((b, a) => a.getSide(Sides.Forward) - b.getSide(Sides.Forward)).filter(a => !ignoreCollisions.has(a));
-                for (let i = 0; i < hits.length; i++) {
-                    if (hits[i].getPos().y == hits[0].getPos().y) {
-                        this.collisionsThisUpdate.get(Sides.Back).add(hits[i]);
-                        hits[i].notifyOfCollision(Sides.Forward, this);
-                        this.setSide(Sides.Back, hits[i].getSide(Sides.Forward));
-                    } else break;
-                }
-            } else if (zVelocity > 0) {
-                let hits = collisions.sort((a, b) => a.getSide(Sides.Back) - b.getSide(Sides.Back)).filter(a => !ignoreCollisions.has(a));
-                for (let i = 0; i < hits.length; i++) {
-                    if (hits[i].getPos().y == hits[0].getPos().y) {
-                        this.collisionsThisUpdate.get(Sides.Forward).add(hits[i]);
-                        hits[i].notifyOfCollision(Sides.Back, this);
-                        this.setSide(Sides.Forward, hits[i].getSide(Sides.Back));
-                    } else break;
-                }
-            }
-        }
+        this.getPos().z += zVelocity;
+        if (zVelocity > 0)
+            this.resolveCollisionsForSide(possibleCollisions, Sides.Forward);
+        else if (zVelocity < 0)
+            this.resolveCollisionsForSide(possibleCollisions, Sides.Back);
+    }
+    private resolveCollisionsForSide(possibleCollisions : Array<PhysBox>, myHitSide: Sides) {
+        let otherHitSide = myHitSide.flip();
+        let sortFunc = myHitSide.direction < 0 ? (b, a) => a.getSide(otherHitSide) - b.getSide(otherHitSide) : (a, b) => a.getSide(otherHitSide) - b.getSide(otherHitSide);
+        possibleCollisions
+            .sort(sortFunc)
+            .filter(a => a.intersects(this))
+            .forEach((collision, idx, arr) => {
+                if (collision.getSide(otherHitSide) != arr[0].getSide(otherHitSide))
+                    return;
+                this.collisionsThisUpdate.get(myHitSide).add(collision);
+                collision.notifyOfCollision(otherHitSide, this);
+                this.setSide(myHitSide, collision.getSide(otherHitSide));
+            });
     }
 
     // CONSTANTS
@@ -943,6 +920,8 @@ class PhysBox extends GameObj {
     private active: boolean = true;
 
     // collision vars
+    private static COLLISION_SWEEP_SAFETY_BUFFER : number = 0.5;
+    private static COLLISION_SAFETY_BUFFER : number = 0.0001;
     private collisionGroup: CollisionGroups = CollisionGroups.Unknown;
     private moverLevel: number = 1;
     private collisionsLastUpdate: Map<Sides, Set<PhysBox>> = new Map([
@@ -951,6 +930,7 @@ class PhysBox extends GameObj {
     private collisionsThisUpdate: Map<Sides, Set<PhysBox>> = new Map([
         [Sides.Left, new Set<PhysBox>()], [Sides.Right, new Set<PhysBox>()], [Sides.Top, new Set<PhysBox>()], [Sides.Bottom, new Set<PhysBox>()], [Sides.Forward, new Set<PhysBox>()], [Sides.Back, new Set<PhysBox>()]
     ]);
+    private collisionBuffers: Map<Sides, number> = new Map([[Sides.Left, 0], [Sides.Right, 0], [Sides.Top, 0], [Sides.Bottom, 0], [Sides.Forward, 0], [Sides.Back, 0]]);
 
     // momentum
     private velocity: BABYLON.Vector3 = BABYLON.Vector3.Zero();
@@ -965,7 +945,7 @@ abstract class Level {
     protected abstract generateFallBox(): FallBox;
     public update() {
         const topBoxY = game.getHighestPhysBox().getPos().y;
-        const spawnOffset = topBoxY + (this.initial ? Level.INITIAL_SPAWN_YOFFSET : 0);
+        const spawnOffset = topBoxY + (this.initial ? Level.INITIAL_SPAWN_YOFFSET : Level.SUBSEQUENT_SPAWN_YOFFSET);
         const playerDistanceFromTopOfTower = (topBoxY - game.getPlayer().getPos().y);
         if ((playerDistanceFromTopOfTower < Level.POPULATE_FALLBOXES_PLAYER_DISTANCE_THRESHOLD) || this.initial) {
             this.fallboxes = [];
@@ -984,6 +964,7 @@ abstract class Level {
     private initial : boolean = true;
     private static POPULATE_FALLBOXES_PLAYER_DISTANCE_THRESHOLD: number = 60;
     private static INITIAL_SPAWN_YOFFSET: number = 10;
+    private static SUBSEQUENT_SPAWN_YOFFSET: number = 6;
     private static FALLBOX_GROUP_HEIGHT: number = 500;
     private static FALLBOX_GROUP_COUNT: number = 100;
 }
@@ -1143,6 +1124,7 @@ class FloorBox extends PhysBox {
     public constructor() {
         super();
         this.setCollisionGroup(CollisionGroups.Level);
+        this.setMoverLevel(2);
         const mesh = BABYLON.MeshBuilder.CreateBox('', {size: 1}, scene);
         const material = new BABYLON.StandardMaterial('', scene);
         material.diffuseTexture = new BABYLON.Texture("https://raw.githubusercontent.com/lattesipper/endlessplatformer/master/resources/images/floorBox.png", scene);
@@ -1513,7 +1495,7 @@ class Player extends PhysBox {
     private static SIDE_XZ_IMPULSE = 0.2;
     private static SIDE_SLIDE_SPEED = 0.05;
     // Damage
-    private static DAMAGE_MOVE_IMPULSE = 0.05;
+    private static DAMAGE_MOVE_IMPULSE = 0.4;
     // Gravity & Max speed
     private static GRAVITY = 0.008;
     private static MAX_Y_SPEED = 0.5;
