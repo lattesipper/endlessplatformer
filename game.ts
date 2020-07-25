@@ -1158,9 +1158,6 @@ class FallBoxBasic extends FallBox {
             BABYLON.SceneLoader.ImportMesh("", "https://raw.githubusercontent.com/lattesipper/endlessplatformer/master/resources/meshes/", "basicbox.obj", scene, (meshes, particleSystems, skeletons) => {
                 let box = meshes[0];
                 const testMaterial = new BABYLON.StandardMaterial('', scene);
-                testMaterial.diffuseTexture = new BABYLON.Texture('https://raw.githubusercontent.com/lattesipper/endlessplatformer/master/resources/images/testBox.png', scene);
-                testMaterial.diffuseTexture.hasAlpha = true;
-                testMaterial.backFaceCulling = false;
                 testMaterial.ambientColor = new BABYLON.Color3(1,1,1);
                 testMaterial.freeze();
                 box.material = testMaterial;
