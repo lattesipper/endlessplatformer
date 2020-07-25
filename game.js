@@ -1110,24 +1110,26 @@ window.addEventListener('DOMContentLoaded', () => {
         }
         static LoadResources() {
             return new Promise((resolve) => {
-                const box = BABYLON.MeshBuilder.CreateBox('', { size: 1 }, scene);
-                const testMaterial = new BABYLON.StandardMaterial('', scene);
-                testMaterial.diffuseTexture = new BABYLON.Texture('https://raw.githubusercontent.com/lattesipper/endlessplatformer/master/resources/images/testBox.png', scene);
-                testMaterial.diffuseTexture.hasAlpha = true;
-                testMaterial.backFaceCulling = false;
-                testMaterial.ambientColor = new BABYLON.Color3(1, 1, 1);
-                testMaterial.freeze();
-                box.material = testMaterial;
-                box.isVisible = false;
-                const instancePool = [];
-                for (let i = 0; i < FallBoxBasic.INSTANCE_COUNT; i++) {
-                    const instance = box.createInstance('');
-                    instance.isVisible = false;
-                    instancePool.push(instance);
-                }
-                FallBoxBasic.TEMPLATE_MESH = box;
-                FallBoxBasic.INSTANCE_POOL = instancePool;
-                resolve();
+                BABYLON.SceneLoader.ImportMesh("", "https://raw.githubusercontent.com/lattesipper/endlessplatformer/master/resources/meshes/", "basicbox.obj", scene, (meshes, particleSystems, skeletons) => {
+                    let box = meshes[0];
+                    const testMaterial = new BABYLON.StandardMaterial('', scene);
+                    testMaterial.diffuseTexture = new BABYLON.Texture('https://raw.githubusercontent.com/lattesipper/endlessplatformer/master/resources/images/testBox.png', scene);
+                    testMaterial.diffuseTexture.hasAlpha = true;
+                    testMaterial.backFaceCulling = false;
+                    testMaterial.ambientColor = new BABYLON.Color3(1, 1, 1);
+                    testMaterial.freeze();
+                    box.material = testMaterial;
+                    box.isVisible = false;
+                    const instancePool = [];
+                    for (let i = 0; i < FallBoxBasic.INSTANCE_COUNT; i++) {
+                        const instance = box.createInstance('');
+                        instance.isVisible = false;
+                        instancePool.push(instance);
+                    }
+                    FallBoxBasic.TEMPLATE_MESH = box;
+                    FallBoxBasic.INSTANCE_POOL = instancePool;
+                    resolve();
+                });
             });
         }
         dispose() {
