@@ -248,6 +248,38 @@ menuContainer.isVisible = false;
 }
 gui.addControl(menuContainer);
 
+class MeshPool {
+    public LoadResources(meshName : string, instanceCount: number) : Promise<any> {
+        return new Promise((resolve) => {
+            BABYLON.SceneLoader.ImportMesh("", "https://raw.githubusercontent.com/lattesipper/endlessplatformer/master/resources/meshes/", meshName, scene, (meshes, particleSystems, skeletons) => {
+                let box = meshes[0];
+                box.isVisible = false;
+                const instances = [];
+                for (let i = 0; i < instanceCount; i++) {
+                    const instance = box.createInstance('');
+                    instance.isVisible = false;
+                    instances.push(instance);
+                }
+                this.templateMesh = box;
+                this.instances = instances;
+                resolve();
+            });
+        });
+    }
+    public getMesh() : BABYLON.Instance {
+        console.assert(this.instances.length > 0);
+        const instance = this.instances.pop();
+        instance.isVisible = true;
+        return instance;
+    }
+    public returnMesh(instance : BABYLON.Instance) {
+        instance.isVisible = false;
+        this.instances.push(instance);
+    }
+    private templateMesh : BABYLON.Mesh;
+    private instances : Array<BABYLON.Instance>;
+}
+
 // Observable object that fires events
 class Observable {
     public onEvent(eventName, callback) : CallableFunction {
@@ -597,7 +629,7 @@ class Game {
         bottomBox
                 .freeze()
                 .setPos(new BABYLON.Vector3(0, 0, 0))
-                .setSize(new BABYLON.Vector3(10, 2, 10));
+                .setSize(new BABYLON.Vector3(14, 2, 14));
         this.addPhysBox(bottomBox);
 
         // all is ready, create the player
@@ -612,6 +644,8 @@ class Game {
         );
         this.player = player;
 
+        this.ySortBoxes();
+
         // create initial cube cluster
         this.currentLevel = new StartLevel();
 
@@ -625,7 +659,7 @@ class Game {
         camera.setRadius(25);
     }
 
-    public addPhysBox(box) { this.physBoxesSortedY.push(box); }
+    public addPhysBox(box) { this.physBoxesSortedY.push(box); this.physBoxToYIndex.set(box, this.getClosestYIndex(box.getPos().y)); }
 
     public getPhysObjects() { return this.physBoxesSortedY; }
     public getPlayer() : Player { return this.player; }
@@ -693,7 +727,7 @@ class Game {
     private static SOUND_DRUMROLL_STOP: BABYLON.Sound;
     private static MESH_LAVA: BABYLON.Mesh;
     // GAME CONSTANTS
-    private static PLAYER_DISTANCE_FOR_FAST_LAVA: number = 100;
+    private static PLAYER_DISTANCE_FOR_FAST_LAVA: number = 60;
     private static LAVA_SPEED_STANDARD: number = 0.0275;
     private static LAVA_SPEED_FAST: number = 0.1;
     private static MAXIMUM_YDISTANCE_UNDER_LAVA: number = 100;
@@ -943,30 +977,28 @@ class PhysBox extends GameObj {
 
 abstract class Level {
     protected abstract generateFallBox(): FallBox;
+    protected abstract afterFallBoxPositioning(fallBox: FallBox);
     public update() {
         const topBoxY = game.getHighestPhysBox().getPos().y;
-        const spawnOffset = topBoxY + (this.initial ? Level.INITIAL_SPAWN_YOFFSET : Level.SUBSEQUENT_SPAWN_YOFFSET);
+        const spawnOffset = topBoxY + (this.initial ? Level.INITIAL_SPAWN_YOFFSET : 0);
         const playerDistanceFromTopOfTower = (topBoxY - game.getPlayer().getPos().y);
         if ((playerDistanceFromTopOfTower < Level.POPULATE_FALLBOXES_PLAYER_DISTANCE_THRESHOLD) || this.initial) {
-            this.fallboxes = [];
-            for (let i = 0; i < Level.FALLBOX_GROUP_COUNT; i++) {
-                const fallBox = this.generateFallBox();
-                do {
-                    fallBox.setPos(new BABYLON.Vector3(-5 + Math.random() * 10, spawnOffset + Math.random() * Level.FALLBOX_GROUP_HEIGHT, -5 + Math.random() * 10));
-                } while (this.fallboxes.some(otherBox => fallBox.intersects(otherBox)))
-                game.addPhysBox(fallBox);
-                this.fallboxes.push(fallBox);
-            }
+            const fallBox = this.generateFallBox();
+            game.addPhysBox(fallBox);
+            this.myboxes.push(fallBox);
+            fallBox.setPos(new BABYLON.Vector3(-Level.XZSpread + Math.random() * (Level.XZSpread*2), spawnOffset + 2 + Math.random() * 3, -Level.XZSpread + Math.random() * (Level.XZSpread*2)));
+            do {
+                fallBox.setPos(new BABYLON.Vector3(-Level.XZSpread + Math.random() * (Level.XZSpread*2), spawnOffset + 2 + Math.random() * 3, -Level.XZSpread + Math.random() * (Level.XZSpread*2)));
+            } while (game.getCollisions(fallBox).length != 0)
+            this.afterFallBoxPositioning(fallBox);
             this.initial = false;
         }
     }
-    private fallboxes : Array<FallBox> = []
     private initial : boolean = true;
+    private myboxes : Array<FallBox> = [];
     private static POPULATE_FALLBOXES_PLAYER_DISTANCE_THRESHOLD: number = 60;
     private static INITIAL_SPAWN_YOFFSET: number = 10;
-    private static SUBSEQUENT_SPAWN_YOFFSET: number = 6;
-    private static FALLBOX_GROUP_HEIGHT: number = 500;
-    private static FALLBOX_GROUP_COUNT: number = 100;
+    protected static XZSpread: number = 7;
 }
 class StartLevel extends Level {
     public constructor() {
@@ -987,6 +1019,13 @@ class StartLevel extends Level {
             }
         }, 5000);
     }
+    protected afterFallBoxPositioning(fallBox: FallBox) {
+        if (fallBox.getCollisionBuffer(Sides.Top) == 1) {
+            fallBox.setCollisionBuffer(Sides.Top, 0);
+            console.log("CREATED COIN BOX");
+        }
+        fallBox.clearCollisionBuffer();
+    }
     protected generateFallBox() : FallBox {
         const fallbox = new FallBoxBasic();
         const rnd = Math.random();
@@ -996,6 +1035,9 @@ class StartLevel extends Level {
             fallbox.setSize(BABYLON.Vector3.One().scale(3));
         } else {
             fallbox.setSize(BABYLON.Vector3.One().scale(5));
+        }
+        if (rnd <= 0.1) {
+            fallbox.setCollisionBuffer(Sides.Top, 1);
         }
         fallbox.setVelocity(new BABYLON.Vector3(0, -0.1, 0));
         return fallbox;
@@ -1135,6 +1177,30 @@ class FloorBox extends PhysBox {
     }
 }
 
+// class Coin extends PhysBox {
+//     public static LoadResources() : Promise<any> {
+//         return new Promise((resolve) => {
+//             BABYLON.SceneLoader.ImportMesh("", "https://raw.githubusercontent.com/lattesipper/endlessplatformer/master/resources/meshes/", "coin.obj", scene, (meshes, particleSystems, skeletons) => {
+//                 let box = meshes[0];
+//                 box.isVisible = false;
+//                 const instancePool = [];
+//                 for (let i = 0; i < FallBoxBasic.INSTANCE_COUNT; i++) {
+//                     const instance = box.createInstance('');
+//                     instance.isVisible = false;
+//                     instancePool.push(instance);
+//                 }
+//                 FallBoxBasic.TEMPLATE_MESH = box;
+//                 FallBoxBasic.INSTANCE_POOL = instancePool;
+//                 resolve();
+//             });
+//         });
+//     }
+//     public constructor() {
+//         super();
+
+//     }
+// }
+
 class FallBox extends PhysBox {
     public constructor() {
         super();
@@ -1153,26 +1219,8 @@ class FallBox extends PhysBox {
 }
 
 class FallBoxBasic extends FallBox {
-    public static LoadResources() : Promise<any> {
-        return new Promise((resolve) => {
-            BABYLON.SceneLoader.ImportMesh("", "https://raw.githubusercontent.com/lattesipper/endlessplatformer/master/resources/meshes/", "basicbox.obj", scene, (meshes, particleSystems, skeletons) => {
-                let box = meshes[0];
-                const testMaterial = new BABYLON.StandardMaterial('', scene);
-                testMaterial.ambientColor = new BABYLON.Color3(1,1,1);
-                testMaterial.freeze();
-                box.material = testMaterial;
-                box.isVisible = false;
-                const instancePool = [];
-                for (let i = 0; i < FallBoxBasic.INSTANCE_COUNT; i++) {
-                    const instance = box.createInstance('');
-                    instance.isVisible = false;
-                    instancePool.push(instance);
-                }
-                FallBoxBasic.TEMPLATE_MESH = box;
-                FallBoxBasic.INSTANCE_POOL = instancePool;
-                resolve();
-            });
-        });
+    public static async LoadResources() {
+        await FallBoxBasic.MESH_POOL.LoadResources('basicbox.obj', FallBoxBasic.INSTANCE_COUNT);
     }
     public constructor() {
         super();
@@ -1186,24 +1234,20 @@ class FallBoxBasic extends FallBox {
         super.startObservation();
         if (this.instance)
             return;
-        console.assert(FallBoxBasic.INSTANCE_POOL.length > 0);
-        this.instance = FallBoxBasic.INSTANCE_POOL.pop();
+        this.instance = FallBoxBasic.MESH_POOL.getMesh();
         this.instance.position = this.getPos();
         this.instance.scaling = this.getSize();
-        this.instance.isVisible = true;
     }
     public endObservation() {
         super.endObservation();
         if (!this.instance)
-            return;
-        FallBoxBasic.INSTANCE_POOL.push(this.instance);
-        this.instance.isVisible = false;
+            return
+        FallBoxBasic.MESH_POOL.returnMesh(this.instance);
         this.instance = null;
     }
-    private instance: BABYLON.Transform = null;
-    private static TEMPLATE_MESH: BABYLON.Mesh;
+    private instance: BABYLON.TransformNode = null;
+    private static MESH_POOL: MeshPool = new MeshPool();
     private static INSTANCE_COUNT: number = 300;
-    private static INSTANCE_POOL: Array<BABYLON.TransformNode> = [];
 }
 
 class Player extends PhysBox {
@@ -1399,11 +1443,13 @@ class Player extends PhysBox {
             }
         }
         if (count && !InputManager.getInstance().isKeyPressed(' ')) {
-            // sliding, set players velocity to slide speed
-            avgYSpeed /= count;
-            avgYSpeed -= Player.SIDE_SLIDE_SPEED;
-            this.getVelocity().y = avgYSpeed;
-            this.setGravity(0);
+            avgYSpeed /= count;                                 // find average speed of the boxes the player is pressing against
+            avgYSpeed -= Player.SIDE_SLIDE_SPEED;               // and add the slide speed to find the players velocity when sliding
+            // only let the player slide if their velocity is already less than this speed (don't allow them to stick automatically, they have to fall a bit first)
+            if (this.getVelocity().y <= avgYSpeed) {
+                this.getVelocity().y = avgYSpeed;
+                this.setGravity(0);
+            }
         } else {
             // not sliding, apply GRAVITY as normal
             this.setGravity(Player.GRAVITY);
