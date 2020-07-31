@@ -248,36 +248,67 @@ menuContainer.isVisible = false;
 }
 gui.addControl(menuContainer);
 
+enum PoolType {
+    Instances,
+    Cloning,
+    SolidParticle // unimplemented
+}
 class MeshPool {
-    public LoadResources(meshName : string, instanceCount: number) : Promise<any> {
+    public constructor(instanceCount: number, poolType: PoolType) {
+        this.instances = new Array(instanceCount);
+        this.poolType = poolType;
+    }
+    public LoadResourcesFromPath(meshName : string) : Promise<any> {
         return new Promise((resolve) => {
             BABYLON.SceneLoader.ImportMesh("", "https://raw.githubusercontent.com/lattesipper/endlessplatformer/master/resources/meshes/", meshName, scene, (meshes, particleSystems, skeletons) => {
-                let box = meshes[0];
+                const box = meshes[0];
                 box.isVisible = false;
-                const instances = [];
-                for (let i = 0; i < instanceCount; i++) {
-                    const instance = box.createInstance('');
-                    instance.isVisible = false;
-                    instances.push(instance);
+                switch(this.poolType) {
+                    case PoolType.Instances:
+                        for (let i = 0; i < this.instances.length; i++) {
+                            const instance = box.createInstance('');
+                            instance.isVisible = false;
+                            this.instances[i] = instance;
+                        }
+                        break;
+                    case PoolType.Cloning:
+                        for (let i = 0; i < this.instances.length; i++) {
+                            const instance = box.clone();
+                            instance.isVisible = false;
+                            this.instances[i] = instance;
+                        }
+                        break;
+                    case PoolType.SolidParticle:
+                        console.assert(false);
+                        break;
                 }
-                this.templateMesh = box;
-                this.instances = instances;
                 resolve();
             });
         });
     }
-    public getMesh() : BABYLON.Instance {
+    public LoadResourcesFromMesh(mesh: BABYLON.Mesh) : Promise<any> {
+        return new Promise((resolve) => {
+            mesh.isVisible = false;
+            for (let i = 0; i < this.instances.length; i++) {
+                const instance = mesh.createInstance('');
+                instance.isVisible = false;
+                this.instances[i] = instance;
+            }
+            resolve();
+        });
+    }
+    public getMesh() : BABYLON.AbstractMesh {
         console.assert(this.instances.length > 0);
         const instance = this.instances.pop();
         instance.isVisible = true;
         return instance;
     }
-    public returnMesh(instance : BABYLON.Instance) {
+    public returnMesh(instance : BABYLON.AbstractMesh) {
         instance.isVisible = false;
         this.instances.push(instance);
     }
-    private templateMesh : BABYLON.Mesh;
-    private instances : Array<BABYLON.Instance>;
+    private instances: Array<BABYLON.AbstractMesh> = [];
+    private poolType: PoolType;
 }
 
 // Observable object that fires events
@@ -520,11 +551,11 @@ class Game {
         this.ySortBoxes();
         // resolve physbox collisions
         for (let i = this.updateCutoffYIndex; i < this.physBoxesSortedY.length; i++) 
-        { const pbox = this.physBoxesSortedY[i]; if (pbox.isActive() && !pbox.isDisposed()) pbox.beforeCollisions(); }
+        { const pbox = this.physBoxesSortedY[i]; if (pbox.isActive()) pbox.beforeCollisions(); }
         for (let i = this.updateCutoffYIndex; i < this.physBoxesSortedY.length; i++) 
-        { const pbox = this.physBoxesSortedY[i]; if (pbox.isActive() && !pbox.isDisposed()) pbox.resolveCollisions(0); }
+        { const pbox = this.physBoxesSortedY[i]; if (pbox.isActive()) pbox.resolveCollisions(0); }
         for (let i = this.updateCutoffYIndex; i < this.physBoxesSortedY.length; i++) 
-        { const pbox = this.physBoxesSortedY[i]; if (pbox.isActive() && !pbox.isDisposed()) pbox.afterCollisions(); }
+        { const pbox = this.physBoxesSortedY[i]; if (pbox.isActive()) pbox.afterCollisions(); }
         // update level logic
         this.currentLevel.update();
     }
@@ -628,8 +659,7 @@ class Game {
         let bottomBox = new FloorBox();
         bottomBox
                 .freeze()
-                .setPos(new BABYLON.Vector3(0, 0, 0))
-                .setSize(new BABYLON.Vector3(14, 2, 14));
+                .setPos(new BABYLON.Vector3(0, 0, 0));
         this.addPhysBox(bottomBox);
 
         // all is ready, create the player
@@ -776,9 +806,9 @@ class CollisionGroups {
     ]);
 }
 
-class PhysBox extends GameObj {
+abstract class PhysBox extends GameObj {
     // destructor
-    public dispose() { this.disposed = true; }
+    public dispose() { this.endObservation(); this.disposed = true; }
     public isDisposed() : boolean { return this.disposed; }
 
     // physical properties
@@ -788,6 +818,8 @@ class PhysBox extends GameObj {
     public getSize() : BABYLON.Vector3 { return this.node.scaling; }
     public getSide(side : Sides) { return this.node.position[side.dim] + (this.node.scaling[side.dim] * 0.5 * side.direction) + this.collisionBuffers.get(side); }
     public setSide(side : Sides, value : number) { this.node.position[side.dim] = value - (this.node.scaling[side.dim] * 0.5 * side.direction); }
+
+    protected setLinkMeshWithSize(link: boolean) { this.linkMeshWithSize = link; }
 
     // momentum
     public setVelocity(velocity: BABYLON.Vector3) : PhysBox { this.velocity = velocity.clone(); return this; }
@@ -799,8 +831,16 @@ class PhysBox extends GameObj {
 
     // status flags
     public isActive() : boolean { return this.active; }
-    public disable() { this.active = false; }
-    public enable() { this.active = true; }
+    public disable() { 
+        if (this.instance)
+            this.instance.isVisible = false;
+        this.active = false; 
+    }
+    public enable() { 
+        if (this.instance)
+            this.instance.isVisible = true;
+        this.active = true; 
+    }
     public freeze() : PhysBox { this.frozen = true; this.fire('freeze', true); return this; }
     public unfreeze() : PhysBox { this.frozen = false; this.fire('freeze', false); return this; }
     public isFrozen() : boolean { return this.frozen; }
@@ -832,8 +872,21 @@ class PhysBox extends GameObj {
     }
 
     // observer callbacks
-    public startObservation() {}
-    public endObservation() {}
+    public abstract getMeshPool() : MeshPool;
+    public startObservation() {
+        if (this.instance)
+            return;
+        this.instance = this.getMeshPool().getMesh();
+        this.instance.scaling = this.linkMeshWithSize ? this.getSize() : BABYLON.Vector3.One();
+        this.instance.position = this.getPos();
+        this.instance.isVisible = this.isActive();
+    }
+    public endObservation() {
+        if (!this.instance)
+            return
+        this.getMeshPool().returnMesh(this.instance);
+        this.instance = null;
+    }
 
     // collision callbacks
     public onCollisionStart(side: Sides, physBox: PhysBox) { }
@@ -944,6 +997,8 @@ class PhysBox extends GameObj {
             });
     }
 
+    protected getMeshInstance() : BABYLON.AbstractMesh { return this.instance; }
+
     // CONSTANTS
     private static FROZEN_VELOCITY: BABYLON.Vector3 = BABYLON.Vector3.Zero();
     public static MAXIMUM_HEIGHT: number = 5;
@@ -973,6 +1028,8 @@ class PhysBox extends GameObj {
 
     // position & size
     private node: BABYLON.TransformNode = new BABYLON.TransformNode('', scene);
+    private instance: BABYLON.AbstractMesh = null;
+    private linkMeshWithSize: boolean = false;
 }
 
 abstract class Level {
@@ -1051,23 +1108,35 @@ enum BoulderState {
     GoingDown
 }
 class Boulder extends PhysBox {
-    public constructor() {
-        super();
-        this.setTerminalVelocity(0.3); 
-        this.setSize(new BABYLON.Vector3(3,3,3));
-        this.setCollisionGroup(CollisionGroups.FloatEnemy);
+    public getMeshPool() : MeshPool { return Boulder.MESH_POOL; }
+    public static async LoadResouces() {
         const obj = BABYLON.MeshBuilder.CreateSphere('', {diameter: 3}, scene);
-        obj.position = this.getPos();
         const material = new BABYLON.StandardMaterial('', scene);
         material.diffuseTexture = new BABYLON.Texture('https://cdnb.artstation.com/p/assets/images/images/010/604/427/large/nick-rossi-gam322-nrossi-m11-lava.jpg', scene);
         material.disableLighting = true;
         material.emissiveColor = new BABYLON.Color3(1,1,1);
         obj.material = material;
-        this.obj = obj;
+        await Boulder.MESH_POOL.LoadResourcesFromMesh(obj);
+    }
+    public startObservation() {
+        super.startObservation(); 
+        this.smokeSystem.emitter = this.getMeshInstance();
+        this.fireSystem.emitter = this.getMeshInstance();
+    }
+    public endObservation() {
+        super.endObservation(); 
+        this.smokeSystem.emitter = null;
+        this.fireSystem.emitter = null;
+    }
+    public constructor() {
+        super();
+        this.setTerminalVelocity(0.3); 
+        this.setSize(new BABYLON.Vector3(3,3,3));
+        this.setCollisionGroup(CollisionGroups.FloatEnemy);
         //Smoke
         var smokeSystem = new BABYLON.ParticleSystem("particles", 1000, scene);
         smokeSystem.particleTexture = new BABYLON.Texture("https://raw.githubusercontent.com/lattesipper/endlessplatformer/master/resources/images/flare.png", scene);
-        smokeSystem.emitter = obj; // the starting object, the emitter
+        //smokeSystem.emitter = obj; // the starting object, the emitter
         smokeSystem.minEmitBox = new BABYLON.Vector3(-0.75, 0, -0.75); // Starting all from
         smokeSystem.maxEmitBox = new BABYLON.Vector3(1, 0, 1); // To...
         smokeSystem.color1 = new BABYLON.Color4(0.02, 0.02, 0.02, .02);
@@ -1089,7 +1158,7 @@ class Boulder extends PhysBox {
         smokeSystem.updateSpeed = 0.005;
         var fireSystem = new BABYLON.ParticleSystem("particles", 2000, scene);
         fireSystem.particleTexture = new BABYLON.Texture("https://raw.githubusercontent.com/lattesipper/endlessplatformer/master/resources/images/flare.png", scene);
-        fireSystem.emitter = obj; // the starting object, the emitter
+        //fireSystem.emitter = obj; // the starting object, the emitter
         fireSystem.minEmitBox = new BABYLON.Vector3(-1, 0, -1); // Starting all from
         fireSystem.maxEmitBox = new BABYLON.Vector3(1, 0, 1); // To...
         fireSystem.color1 = new BABYLON.Color4(1, 0.5, 0, 1.0);
@@ -1111,14 +1180,13 @@ class Boulder extends PhysBox {
         fireSystem.updateSpeed = 0.007;
         this.smokeSystem = smokeSystem;
         this.fireSystem = fireSystem;
-        this.obj.isVisible = false;
+        //this.obj.isVisible = false;
         this.disable();
     }
     public dispose() {
         super.dispose();
         this.smokeSystem.dispose();
         this.fireSystem.dispose();
-        this.obj.dispose();
     }
     public launch() : boolean {
         if (this.myState != BoulderState.Waiting)
@@ -1130,7 +1198,7 @@ class Boulder extends PhysBox {
         this.smokeSystem.start();
         this.fireSystem.start();
         this.myState = BoulderState.GoingUp;
-        this.obj.isVisible = true;
+        //this.obj.isVisible = true;
         return true;
     }
     public afterCollisions() {
@@ -1150,7 +1218,7 @@ class Boulder extends PhysBox {
                     this.myState = BoulderState.Waiting;
                     this.smokeSystem.stop();
                     this.fireSystem.stop();
-                    this.obj.isVisible = false;
+                    //this.obj.isVisible = false;
                     this.disable();
                 }
                 break;
@@ -1159,14 +1227,24 @@ class Boulder extends PhysBox {
     private smokeSystem: BABYLON.ParticleSystem;
     private fireSystem: BABYLON.ParticleSystem;
     private myState: BoulderState = BoulderState.Waiting;
-    private obj: BABYLON.Mesh;
+    private static MESH_POOL: MeshPool = new MeshPool(10, PoolType.Instances);
 }
 
 class FloorBox extends PhysBox {
+    public static async LoadResources() {
+        const mesh = BABYLON.MeshBuilder.CreateBox('', {width: 14, height: 2, depth: 14}, scene);
+        const material = new BABYLON.StandardMaterial('', scene);
+        material.diffuseTexture = new BABYLON.Texture("https://raw.githubusercontent.com/lattesipper/endlessplatformer/master/resources/images/floorBox.png", scene);
+        material.freeze();
+        mesh.material = material;
+        await this.MESH_POOL.LoadResourcesFromMesh(mesh);
+    }
+    public getMeshPool() : MeshPool { return FloorBox.MESH_POOL; }
     public constructor() {
         super();
         this.setCollisionGroup(CollisionGroups.Level);
         this.setMoverLevel(2);
+        this.setSize(new BABYLON.Vector3(14, 2, 14));
         const mesh = BABYLON.MeshBuilder.CreateBox('', {size: 1}, scene);
         const material = new BABYLON.StandardMaterial('', scene);
         material.diffuseTexture = new BABYLON.Texture("https://raw.githubusercontent.com/lattesipper/endlessplatformer/master/resources/images/floorBox.png", scene);
@@ -1175,37 +1253,27 @@ class FloorBox extends PhysBox {
         mesh.position = this.getPos();
         mesh.scaling = this.getSize();
     }
+    private static MESH_POOL: MeshPool = new MeshPool(1, PoolType.Instances);
 }
 
-// class Coin extends PhysBox {
-//     public static LoadResources() : Promise<any> {
-//         return new Promise((resolve) => {
-//             BABYLON.SceneLoader.ImportMesh("", "https://raw.githubusercontent.com/lattesipper/endlessplatformer/master/resources/meshes/", "coin.obj", scene, (meshes, particleSystems, skeletons) => {
-//                 let box = meshes[0];
-//                 box.isVisible = false;
-//                 const instancePool = [];
-//                 for (let i = 0; i < FallBoxBasic.INSTANCE_COUNT; i++) {
-//                     const instance = box.createInstance('');
-//                     instance.isVisible = false;
-//                     instancePool.push(instance);
-//                 }
-//                 FallBoxBasic.TEMPLATE_MESH = box;
-//                 FallBoxBasic.INSTANCE_POOL = instancePool;
-//                 resolve();
-//             });
-//         });
-//     }
-//     public constructor() {
-//         super();
+class Coin extends PhysBox {
+    public static async LoadResources() {
+        await Coin.MESH_POOL.LoadResourcesFromPath('coin.obj');
+    }
+    public getMeshPool() : MeshPool { return Coin.MESH_POOL; }
+    public constructor() {
+        super();
+        this.setSize(new BABYLON.Vector3(1,1,1));
+    }
+    private static MESH_POOL: MeshPool = new MeshPool(30, PoolType.Instances);
+}
 
-//     }
-// }
-
-class FallBox extends PhysBox {
+abstract class FallBox extends PhysBox {
     public constructor() {
         super();
         this.setMoverLevel(2);
         this.setCollisionGroup(CollisionGroups.Level);
+        this.setLinkMeshWithSize(true);
         this.color = new BABYLON.Color4(0.5 + Math.random() * 0.5, 0.5 + Math.random() * 0.5, 0.5 + Math.random() * 0.5, 1);
     }
     public onCollisionStart(side: Sides, physBox : PhysBox) {
@@ -1220,39 +1288,21 @@ class FallBox extends PhysBox {
 
 class FallBoxBasic extends FallBox {
     public static async LoadResources() {
-        await FallBoxBasic.MESH_POOL.LoadResources('basicbox.obj', FallBoxBasic.INSTANCE_COUNT);
+        await FallBoxBasic.MESH_POOL.LoadResourcesFromPath('basicbox.obj');
     }
     public constructor() {
         super();
         this.setMoverLevel(2);
     }
-    public dispose() {
-        super.dispose();
-        this.endObservation();
+    public getMeshPool() : MeshPool {
+        return FallBoxBasic.MESH_POOL;
     }
-    public startObservation() {
-        super.startObservation();
-        if (this.instance)
-            return;
-        this.instance = FallBoxBasic.MESH_POOL.getMesh();
-        this.instance.position = this.getPos();
-        this.instance.scaling = this.getSize();
-    }
-    public endObservation() {
-        super.endObservation();
-        if (!this.instance)
-            return
-        FallBoxBasic.MESH_POOL.returnMesh(this.instance);
-        this.instance = null;
-    }
-    private instance: BABYLON.TransformNode = null;
-    private static MESH_POOL: MeshPool = new MeshPool();
-    private static INSTANCE_COUNT: number = 300;
+    private static MESH_POOL: MeshPool = new MeshPool(300, PoolType.Instances);
 }
 
 class Player extends PhysBox {
-    public static LoadResources() : Promise<any> {
-        return Promise.all([
+    public static async LoadResources() {
+        await Promise.all([
             new Promise((resolve) => {
                 Player.SOUND_DAMAGE = new BABYLON.Sound("", "https://raw.githubusercontent.com/lattesipper/endlessplatformer/master/resources/sounds/damage.wav", scene, resolve, {
                     loop: false, autoplay: false, volume: 0.5
@@ -1278,37 +1328,42 @@ class Player extends PhysBox {
                     autoplay:  false,
                     volume: 0.5
                 });
-            }),
-            new Promise((resolve) => {
-                BABYLON.SceneLoader.ImportMesh("", "https://raw.githubusercontent.com/lattesipper/endlessplatformer/master/resources/meshes/", "player.obj", scene, (meshes, particleSystems, skeletons) => {
-                    const testMaterial = new BABYLON.StandardMaterial('', scene);
-                    testMaterial.diffuseTexture = new BABYLON.Texture('https://raw.githubusercontent.com/lattesipper/endlessplatformer/master/resources/meshes/player.png', scene);
-                    testMaterial.ambientColor = new BABYLON.Color3(1, 1, 1);
-                    //testMaterial.freeze();
-                    meshes[0].material = testMaterial;
-                    meshes[0].isVisible = false;
-                    Player.MESH = <BABYLON.Mesh>(meshes[0]);
-                    resolve();
-                });
             })
+            // ,new Promise((resolve) => {
+            //     BABYLON.SceneLoader.ImportMesh("", "https://raw.githubusercontent.com/lattesipper/endlessplatformer/master/resources/meshes/", "player.obj", scene, (meshes, particleSystems, skeletons) => {
+            //         const testMaterial = new BABYLON.StandardMaterial('', scene);
+            //         testMaterial.diffuseTexture = new BABYLON.Texture('https://raw.githubusercontent.com/lattesipper/endlessplatformer/master/resources/meshes/player.png', scene);
+            //         testMaterial.ambientColor = new BABYLON.Color3(1, 1, 1);
+            //         //testMaterial.freeze();
+            //         meshes[0].material = testMaterial;
+            //         meshes[0].isVisible = false;
+            //         Player.MESH = <BABYLON.Mesh>(meshes[0]);
+            //         resolve();
+            //     });
+            // })
         ]);
+        await Player.MESH_POOL.LoadResourcesFromPath('player.obj');
     }
+    public getMeshPool() : MeshPool { return Player.MESH_POOL; }
     public dispose() {
         super.dispose();
-        this.mesh.dispose();
         this.explosionParticleSystem.dispose();
     }
+    public startObservation() {
+        super.startObservation();
+        this.explosionParticleSystem.emitter = this.getMeshInstance();
+    }
+    public endObservation() {
+        super.endObservation();
+        this.explosionParticleSystem.emitter = null;
+    }
+
     public constructor() {
         super();
         this.setCollisionGroup(CollisionGroups.Player);
 
-        this.mesh = Player.MESH.clone('');
-        this.mesh.isVisible = true;
-        this.mesh.position = this.getPos();
-
         const particleSystem = new BABYLON.ParticleSystem("particles", 2000, scene);
         particleSystem.particleTexture = new BABYLON.Texture("https://raw.githubusercontent.com/lattesipper/endlessplatformer/master/resources/images/flare.png", scene);
-        particleSystem.emitter = this.mesh; // the starting object, the emitter
         particleSystem.minEmitBox = new BABYLON.Vector3(0, 0, 0); // Starting all from
         particleSystem.maxEmitBox = new BABYLON.Vector3(0, 0, 0); // To...
         particleSystem.color1 = new BABYLON.Color4(1.0, 1.0, 1.0, 1.0);
@@ -1336,7 +1391,6 @@ class Player extends PhysBox {
     }
     public disable() {
         super.disable();
-        this.mesh.isVisible = false;
     }
     public kill() {
         this.disable();
@@ -1355,10 +1409,10 @@ class Player extends PhysBox {
         if (this.health == 0) {
             this.kill();
         } else {
-            this.mesh.visibility = 0.5;
+            this.getMeshInstance().visibility = 0.5;
             this.setCollisionGroup(CollisionGroups.LevelOnly);
             setTimeout(() => {
-                this.mesh.visibility = 1;
+                this.getMeshInstance().visibility = 1;
                 this.setCollisionGroup(CollisionGroups.Player);
             }, 2000);
             if (damadger) {
@@ -1390,20 +1444,21 @@ class Player extends PhysBox {
         let count = 0;
 
         // update rotation animation
-        if (this.mesh) {
+        const mesh = this.getMeshInstance();
+        if (mesh) {
             if (this.getVelocity().z > 0) {
-                this.mesh.rotation.x = Math.min(this.mesh.rotation.x + 0.05, 0.15);
+                mesh.rotation.x = Math.min(mesh.rotation.x + 0.05, 0.15);
             } else if (this.getVelocity().z < 0) {
-                this.mesh.rotation.x = Math.max(this.mesh.rotation.x - 0.05, -0.15);
+                mesh.rotation.x = Math.max(mesh.rotation.x - 0.05, -0.15);
             } else {
-                this.mesh.rotation.x = (Math.abs(this.mesh.rotation.x) <= 0.05) ? 0 : this.mesh.rotation.x + 0.05 * Math.sign(this.mesh.rotation.x) * -1;
+                mesh.rotation.x = (Math.abs(mesh.rotation.x) <= 0.05) ? 0 : mesh.rotation.x + 0.05 * Math.sign(mesh.rotation.x) * -1;
             }
             if (this.getVelocity().x < 0) {
-                this.mesh.rotation.z = Math.min(this.mesh.rotation.z + 0.05, 0.15);
+                mesh.rotation.z = Math.min(mesh.rotation.z + 0.05, 0.15);
             } else if (this.getVelocity().x > 0) {
-                this.mesh.rotation.z = Math.max(this.mesh.rotation.z - 0.05, -0.15);
+                mesh.rotation.z = Math.max(mesh.rotation.z - 0.05, -0.15);
             } else {
-                this.mesh.rotation.z = (Math.abs(this.mesh.rotation.z) <= 0.05) ? 0 : this.mesh.rotation.z + 0.05 * Math.sign(this.mesh.rotation.z) * -1;
+                mesh.rotation.z = (Math.abs(mesh.rotation.z) <= 0.05) ? 0 : mesh.rotation.z + 0.05 * Math.sign(mesh.rotation.z) * -1;
             }
         }
 
@@ -1527,7 +1582,6 @@ class Player extends PhysBox {
     private static SOUND_HIT_HEAD: BABYLON.Sound;
     private static SOUND_DEATH: BABYLON.Sound;
     private static SOUND_DAMAGE: BABYLON.Sound;
-    private static MESH: BABYLON.Mesh;
 
     // CONSTANTS
     //  General movement
@@ -1549,13 +1603,17 @@ class Player extends PhysBox {
     private bestHeight: number = 0;
     private explosionParticleSystem: BABYLON.ParticleSystem;
     private health: number = 5;
+
+    private static MESH_POOL : MeshPool = new MeshPool(2, PoolType.Cloning);
 }
 
 Promise.all([
     Game.LoadResources(),
     Player.LoadResources(),
     GameCamera.LoadResources(),
-    FallBoxBasic.LoadResources()
+    FallBoxBasic.LoadResources(),
+    FloorBox.LoadResources(),
+    Boulder.LoadResouces()
 ]).then(() => {
     loadingContainer.isVisible = false;
     menuContainer.isVisible = true;
