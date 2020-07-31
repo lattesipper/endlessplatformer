@@ -1037,7 +1037,11 @@ window.addEventListener('DOMContentLoaded', () => {
         afterFallBoxPositioning(fallBox) {
             if (fallBox.getCollisionBuffer(Sides.Top) == 1) {
                 fallBox.setCollisionBuffer(Sides.Top, 0);
-                console.log("CREATED COIN BOX");
+                const coin = new Coin();
+                coin.setPos(fallBox.getPos());
+                coin.setSide(Sides.Bottom, fallBox.getSide(Sides.Top));
+                coin.setGravity(0.05);
+                game.addPhysBox(coin);
             }
             fallBox.clearCollisionBuffer();
         }
@@ -1053,7 +1057,7 @@ window.addEventListener('DOMContentLoaded', () => {
             else {
                 fallbox.setSize(BABYLON.Vector3.One().scale(5));
             }
-            if (rnd <= 0.1) {
+            if (rnd <= 0.3) {
                 fallbox.setCollisionBuffer(Sides.Top, 1);
             }
             fallbox.setVelocity(new BABYLON.Vector3(0, -0.1, 0));
@@ -1218,6 +1222,7 @@ window.addEventListener('DOMContentLoaded', () => {
     class Coin extends PhysBox {
         constructor() {
             super();
+            super.setCollisionGroup(CollisionGroups.Level);
             this.setSize(new BABYLON.Vector3(1, 1, 1));
         }
         static LoadResources() {
@@ -1226,6 +1231,13 @@ window.addEventListener('DOMContentLoaded', () => {
             });
         }
         getMeshPool() { return Coin.MESH_POOL; }
+        beforeCollisions() {
+            super.beforeCollisions();
+            const mesh = this.getMeshInstance();
+            if (mesh) {
+                mesh.rotation.y += 0.01;
+            }
+        }
     }
     Coin.MESH_POOL = new MeshPool(30, PoolType.Instances);
     class FallBox extends PhysBox {
@@ -1596,7 +1608,8 @@ window.addEventListener('DOMContentLoaded', () => {
         GameCamera.LoadResources(),
         FallBoxBasic.LoadResources(),
         FloorBox.LoadResources(),
-        Boulder.LoadResouces()
+        Boulder.LoadResouces(),
+        Coin.LoadResources()
     ]).then(() => {
         loadingContainer.isVisible = false;
         menuContainer.isVisible = true;
