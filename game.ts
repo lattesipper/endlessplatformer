@@ -485,6 +485,7 @@ class Game {
                 lavaMaterial.freeze();
                 lava.material = lavaMaterial;
                 lava.isVisible = false;
+                lavaMaterial.blendMode = BABYLON.Engine.ALPHA_MULTIPLY;
                 Game.MESH_LAVA = lava;
                 resolve();
             })
@@ -1264,20 +1265,23 @@ class Coin extends PhysBox {
     public static async LoadResources() {
         await Coin.MESH_POOL.LoadResourcesFromPath('coin.obj');
     }
-    public getMeshPool() : MeshPool { return Coin.MESH_POOL; }
+    private static getYRotation() : number { return (t / 60) * (Math.PI * 2) * this.REVS_PER_SECOND; }
+
     public constructor() {
         super();
         super.setCollisionGroup(CollisionGroups.Level);
         this.setSize(new BABYLON.Vector3(1,1,1));
     }
+    public getMeshPool() : MeshPool { return Coin.MESH_POOL; }
     public beforeCollisions() {
         super.beforeCollisions();
         const mesh = this.getMeshInstance();
         if (mesh) {
-            mesh.rotation.y += 0.01;
+            mesh.rotation.y = Coin.getYRotation();
         }
     }
     private static MESH_POOL: MeshPool = new MeshPool(30, PoolType.Instances);
+    private static REVS_PER_SECOND = 0.5;
 }
 
 abstract class FallBox extends PhysBox {

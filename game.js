@@ -495,6 +495,7 @@ window.addEventListener('DOMContentLoaded', () => {
                     lavaMaterial.freeze();
                     lava.material = lavaMaterial;
                     lava.isVisible = false;
+                    lavaMaterial.blendMode = BABYLON.Engine.ALPHA_MULTIPLY;
                     Game.MESH_LAVA = lava;
                     resolve();
                 })
@@ -1230,16 +1231,18 @@ window.addEventListener('DOMContentLoaded', () => {
                 yield Coin.MESH_POOL.LoadResourcesFromPath('coin.obj');
             });
         }
+        static getYRotation() { return (t / 60) * (Math.PI * 2) * this.REVS_PER_SECOND; }
         getMeshPool() { return Coin.MESH_POOL; }
         beforeCollisions() {
             super.beforeCollisions();
             const mesh = this.getMeshInstance();
             if (mesh) {
-                mesh.rotation.y += 0.01;
+                mesh.rotation.y = Coin.getYRotation();
             }
         }
     }
     Coin.MESH_POOL = new MeshPool(30, PoolType.Instances);
+    Coin.REVS_PER_SECOND = 0.5;
     class FallBox extends PhysBox {
         constructor() {
             super();
