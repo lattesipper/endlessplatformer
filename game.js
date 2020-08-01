@@ -20,7 +20,13 @@ window.addEventListener('DOMContentLoaded', () => {
     scene.fogEnd = 60.0;
     scene.fogColor = new BABYLON.Color3(1, 0, 0);
     scene.clearColor = new BABYLON.Color4(1, 0, 0, 1.0);
-    scene.ambientColor = new BABYLON.Color3(0.3, 0.3, 0.3);
+    scene.ambientColor = new BABYLON.Color3(0.1, 0.1, 0.1);
+    var light2 = new BABYLON.DirectionalLight("DirectionalLight", new BABYLON.Vector3(0, -1, 0), scene);
+    light2.intensity = 2.0;
+    light2.autoUpdateExtends = false;
+    var shadowGenerator = new BABYLON.ShadowGenerator(2048, light2);
+    shadowGenerator.usePoissonSampling = false;
+    shadowGenerator.setDarkness(0);
     // Run the render loop.
     engine.runRenderLoop(() => {
         scene.render();
@@ -258,19 +264,20 @@ window.addEventListener('DOMContentLoaded', () => {
         LoadResourcesFromPath(meshName) {
             return new Promise((resolve) => {
                 BABYLON.SceneLoader.ImportMesh("", "https://raw.githubusercontent.com/lattesipper/endlessplatformer/master/resources/meshes/", meshName, scene, (meshes, particleSystems, skeletons) => {
-                    const box = meshes[0];
-                    box.isVisible = false;
+                    this.templateMesh = (meshes[0]);
+                    this.templateMesh.isVisible = false;
+                    this.templateMesh.receiveShadows = true;
                     switch (this.poolType) {
                         case PoolType.Instances:
                             for (let i = 0; i < this.instances.length; i++) {
-                                const instance = box.createInstance('');
+                                const instance = this.templateMesh.createInstance('');
                                 instance.isVisible = false;
                                 this.instances[i] = instance;
                             }
                             break;
                         case PoolType.Cloning:
                             for (let i = 0; i < this.instances.length; i++) {
-                                const instance = box.clone();
+                                const instance = this.templateMesh.clone();
                                 instance.isVisible = false;
                                 this.instances[i] = instance;
                             }
@@ -303,6 +310,9 @@ window.addEventListener('DOMContentLoaded', () => {
         returnMesh(instance) {
             instance.isVisible = false;
             this.instances.push(instance);
+        }
+        getTemplateMesh() {
+            return this.templateMesh;
         }
     }
     // Observable object that fires events
@@ -1228,6 +1238,13 @@ window.addEventListener('DOMContentLoaded', () => {
         }
         static LoadResources() {
             return __awaiter(this, void 0, void 0, function* () {
+                yield Promise.all([
+                    new Promise((resolve) => {
+                        Coin.SOUND_COIN = new BABYLON.Sound("", "https://raw.githubusercontent.com/lattesipper/endlessplatformer/master/resources/sounds/coinCollect.wav", scene, resolve, {
+                            loop: false, autoplay: false, volume: 0.5
+                        });
+                    })
+                ]);
                 yield Coin.MESH_POOL.LoadResourcesFromPath('coin.obj');
             });
         }
@@ -1240,8 +1257,15 @@ window.addEventListener('DOMContentLoaded', () => {
                 mesh.rotation.y = Coin.getYRotation();
             }
         }
+        onCollisionStart(side, physBox) {
+            super.onCollisionStart(side, physBox);
+            if (physBox instanceof Player) {
+                this.disable();
+                Coin.SOUND_COIN.play();
+            }
+        }
     }
-    Coin.MESH_POOL = new MeshPool(30, PoolType.Instances);
+    Coin.MESH_POOL = new MeshPool(50, PoolType.Instances);
     Coin.REVS_PER_SECOND = 0.5;
     class FallBox extends PhysBox {
         constructor() {
@@ -1271,6 +1295,9 @@ window.addEventListener('DOMContentLoaded', () => {
         }
         getMeshPool() {
             return FallBoxBasic.MESH_POOL;
+        }
+        startObservation() {
+            super.startObservation();
         }
     }
     FallBoxBasic.MESH_POOL = new MeshPool(300, PoolType.Instances);
@@ -1316,37 +1343,19 @@ window.addEventListener('DOMContentLoaded', () => {
                     }),
                     new Promise((resolve) => {
                         Player.SOUND_JUMP = new BABYLON.Sound("", "https://raw.githubusercontent.com/lattesipper/endlessplatformer/master/resources/sounds/jump.wav", scene, resolve, {
-                            loop: false,
-                            autoplay: false,
-                            volume: 0.5
+                            loop: false, autoplay: false, volume: 0.5
                         });
                     }),
                     new Promise((resolve) => {
                         Player.SOUND_HIT_HEAD = new BABYLON.Sound("", "https://raw.githubusercontent.com/lattesipper/endlessplatformer/master/resources/sounds/hitHead.wav", scene, resolve, {
-                            loop: false,
-                            autoplay: false,
-                            volume: 0.5
+                            loop: false, autoplay: false, volume: 0.5
                         });
                     }),
                     new Promise((resolve) => {
                         Player.SOUND_DEATH = new BABYLON.Sound("", "https://raw.githubusercontent.com/lattesipper/endlessplatformer/master/resources/sounds/death.wav", scene, resolve, {
-                            loop: false,
-                            autoplay: false,
-                            volume: 0.5
+                            loop: false, autoplay: false, volume: 0.5
                         });
                     })
-                    // ,new Promise((resolve) => {
-                    //     BABYLON.SceneLoader.ImportMesh("", "https://raw.githubusercontent.com/lattesipper/endlessplatformer/master/resources/meshes/", "player.obj", scene, (meshes, particleSystems, skeletons) => {
-                    //         const testMaterial = new BABYLON.StandardMaterial('', scene);
-                    //         testMaterial.diffuseTexture = new BABYLON.Texture('https://raw.githubusercontent.com/lattesipper/endlessplatformer/master/resources/meshes/player.png', scene);
-                    //         testMaterial.ambientColor = new BABYLON.Color3(1, 1, 1);
-                    //         //testMaterial.freeze();
-                    //         meshes[0].material = testMaterial;
-                    //         meshes[0].isVisible = false;
-                    //         Player.MESH = <BABYLON.Mesh>(meshes[0]);
-                    //         resolve();
-                    //     });
-                    // })
                 ]);
                 yield Player.MESH_POOL.LoadResourcesFromPath('player.obj');
             });
@@ -1359,8 +1368,10 @@ window.addEventListener('DOMContentLoaded', () => {
         startObservation() {
             super.startObservation();
             this.explosionParticleSystem.emitter = this.getMeshInstance();
+            shadowGenerator.addShadowCaster(this.getMeshInstance());
         }
         endObservation() {
+            shadowGenerator.removeShadowCaster(this.getMeshInstance());
             super.endObservation();
             this.explosionParticleSystem.emitter = null;
         }
@@ -1574,6 +1585,7 @@ window.addEventListener('DOMContentLoaded', () => {
         afterCollisions() {
             super.afterCollisions();
             camera.setY(this.getPos().y);
+            light2.position.copyFrom(this.getPos()).addInPlaceFromFloats(0, 2, 0);
             // Death conditions
             //  1) Death due to being crushed
             if (this.getCollisions(Sides.Bottom).size && this.getCollisions(Sides.Top).size) {
