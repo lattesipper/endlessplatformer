@@ -1060,6 +1060,7 @@ window.addEventListener('DOMContentLoaded', () => {
         setState(newState) {
             switch (newState) {
                 case LevelState.FinishedTower:
+                    alert("FINISHED");
                     const boxingRing = new BoxingRing();
                     boxingRing.setSide(Sides.Bottom, this.getHighestBox().getSide(Sides.Top) + 2);
                     game.addPhysBox(boxingRing);
@@ -1095,7 +1096,7 @@ window.addEventListener('DOMContentLoaded', () => {
             }, 5000);
         }
         getBoxYIncrement() { return Math.random() * 3; }
-        getApproxTowerHeight() { return 30; }
+        getApproxTowerHeight() { return 3; }
         afterFallBoxPositioning(fallBox) {
             if (fallBox.getCollisionBuffer(Sides.Top) == 1) {
                 fallBox.setCollisionBuffer(Sides.Top, 0);
@@ -1286,6 +1287,7 @@ window.addEventListener('DOMContentLoaded', () => {
             super();
             super.setCollisionGroup(CollisionGroups.Level);
             this.setNormalizedSize(new BABYLON.Vector3(7, 1, 7));
+            this.setVelocity(new BABYLON.Vector3(0, -0.1, 0));
         }
         static LoadResources() {
             return __awaiter(this, void 0, void 0, function* () {
@@ -1294,7 +1296,7 @@ window.addEventListener('DOMContentLoaded', () => {
         }
         getMeshPool() { return BoxingRing.MESH_POOL; }
     }
-    BoxingRing.MESH_POOL = new MeshPool(50, PoolType.Instances);
+    BoxingRing.MESH_POOL = new MeshPool(1, PoolType.Instances);
     class Coin extends PhysBox {
         constructor() {
             super();

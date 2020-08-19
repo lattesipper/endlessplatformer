@@ -1093,6 +1093,7 @@ abstract class Level extends Observable {
     private setState(newState) {
         switch(newState) {
             case LevelState.FinishedTower:
+                alert("FINISHED");
                 const boxingRing = new BoxingRing();
                 boxingRing.setSide(Sides.Bottom, this.getHighestBox().getSide(Sides.Top) + 2);
                 game.addPhysBox(boxingRing);
@@ -1129,7 +1130,7 @@ class StartLevel extends Level {
         }, 5000);
     }
     protected getBoxYIncrement(): number { return Math.random() * 3; }
-    protected getApproxTowerHeight(): number { return 30; }
+    protected getApproxTowerHeight(): number { return 3; }
     protected afterFallBoxPositioning(fallBox: FallBox) {
         if (fallBox.getCollisionBuffer(Sides.Top) == 1) {
             fallBox.setCollisionBuffer(Sides.Top, 0);
@@ -1322,9 +1323,10 @@ class BoxingRing extends PhysBox{
         super();
         super.setCollisionGroup(CollisionGroups.Level);
         this.setNormalizedSize(new BABYLON.Vector3(7,1,7));
+        this.setVelocity(new BABYLON.Vector3(0, -0.1, 0));
     }
     public getMeshPool() : MeshPool { return BoxingRing.MESH_POOL; }
-    private static MESH_POOL: MeshPool = new MeshPool(50, PoolType.Instances);
+    private static MESH_POOL: MeshPool = new MeshPool(1, PoolType.Instances);
 }
 
 class Coin extends PhysBox {
