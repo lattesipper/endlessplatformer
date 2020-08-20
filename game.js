@@ -276,7 +276,7 @@ window.addEventListener('DOMContentLoaded', () => {
             this.instances = new Array(instanceCount);
             this.poolType = poolType;
         }
-        LoadResourcesFromPath(meshName) {
+        LoadResourcesFromPath(meshName, onMeshLoad = (mesh) => { }) {
             return __awaiter(this, void 0, void 0, function* () {
                 yield new Promise((resolve) => {
                     BABYLON.SceneLoader.ImportMesh("", "https://raw.githubusercontent.com/lattesipper/endlessplatformer/master/resources/meshes/", meshName, scene, (meshes, particleSystems, skeletons) => {
@@ -289,6 +289,7 @@ window.addEventListener('DOMContentLoaded', () => {
                                     const instance = this.templateMesh.createInstance('');
                                     instance.isVisible = false;
                                     this.instances[i] = instance;
+                                    onMeshLoad(this.instances[i]);
                                 }
                                 break;
                             case PoolType.Cloning:
@@ -296,6 +297,7 @@ window.addEventListener('DOMContentLoaded', () => {
                                     const instance = this.templateMesh.clone();
                                     instance.isVisible = false;
                                     this.instances[i] = instance;
+                                    onMeshLoad(this.instances[i]);
                                 }
                                 break;
                             case PoolType.SolidParticle:
@@ -1061,9 +1063,12 @@ window.addEventListener('DOMContentLoaded', () => {
             switch (newState) {
                 case LevelState.FinishedTower:
                     alert("FINISHED");
-                    const boxingRing = new BoxingRing();
-                    boxingRing.setSide(Sides.Bottom, this.getHighestBox().getSide(Sides.Top) + 2);
-                    game.addPhysBox(boxingRing);
+                    const boxingRingBottom = new BoxingRingBottom();
+                    boxingRingBottom.setSide(Sides.Bottom, this.getHighestBox().getSide(Sides.Top) + 2);
+                    game.addPhysBox(boxingRingBottom);
+                    const boxingRingTop = new BoxingRingTop();
+                    boxingRingTop.setSide(Sides.Bottom, boxingRingBottom.getSide(Sides.Top) + 2);
+                    game.addPhysBox(boxingRingTop);
                     break;
                 default:
                     break;
@@ -1282,7 +1287,7 @@ window.addEventListener('DOMContentLoaded', () => {
         getMeshPool() { return FloorBox.MESH_POOL; }
     }
     FloorBox.MESH_POOL = new MeshPool(1, PoolType.Instances);
-    class BoxingRing extends PhysBox {
+    class BoxingRingBottom extends PhysBox {
         constructor() {
             super();
             super.setCollisionGroup(CollisionGroups.Level);
@@ -1291,12 +1296,31 @@ window.addEventListener('DOMContentLoaded', () => {
         }
         static LoadResources() {
             return __awaiter(this, void 0, void 0, function* () {
-                yield BoxingRing.MESH_POOL.LoadResourcesFromPath('boxingringtop.obj');
+                yield BoxingRingBottom.MESH_POOL.LoadResourcesFromPath('boxingringbottom.obj', (mesh) => {
+                    mesh.visibility = 0.5;
+                });
             });
         }
-        getMeshPool() { return BoxingRing.MESH_POOL; }
+        getMeshPool() { return BoxingRingBottom.MESH_POOL; }
     }
-    BoxingRing.MESH_POOL = new MeshPool(1, PoolType.Instances);
+    BoxingRingBottom.MESH_POOL = new MeshPool(3, PoolType.Cloning);
+    class BoxingRingTop extends PhysBox {
+        constructor() {
+            super();
+            super.setCollisionGroup(CollisionGroups.Level);
+            this.setNormalizedSize(new BABYLON.Vector3(7, 1, 7));
+            this.setVelocity(new BABYLON.Vector3(0, -0.1, 0));
+        }
+        static LoadResources() {
+            return __awaiter(this, void 0, void 0, function* () {
+                yield BoxingRingTop.MESH_POOL.LoadResourcesFromPath('boxingringtop.obj', (mesh) => {
+                    //mesh.visibility = 0.5;  
+                });
+            });
+        }
+        getMeshPool() { return BoxingRingTop.MESH_POOL; }
+    }
+    BoxingRingTop.MESH_POOL = new MeshPool(3, PoolType.Cloning);
     class Coin extends PhysBox {
         constructor() {
             super();
@@ -1639,7 +1663,8 @@ window.addEventListener('DOMContentLoaded', () => {
         FloorBox.LoadResources(),
         Boulder.LoadResouces(),
         Coin.LoadResources(),
-        BoxingRing.LoadResources()
+        BoxingRingBottom.LoadResources(),
+        BoxingRingTop.LoadResources()
     ]).then(() => {
         loadingContainer.isVisible = false;
         menuContainer.isVisible = true;

@@ -279,7 +279,7 @@ class MeshPool {
         this.instances = new Array(instanceCount);
         this.poolType = poolType;
     }
-    public async LoadResourcesFromPath(meshName : string) {
+    public async LoadResourcesFromPath(meshName : string, onMeshLoad = (mesh) => {}) {
         await new Promise((resolve) => {
             BABYLON.SceneLoader.ImportMesh("", "https://raw.githubusercontent.com/lattesipper/endlessplatformer/master/resources/meshes/", meshName, scene, (meshes, particleSystems, skeletons) => {
                 this.templateMesh = <BABYLON.Mesh>(meshes[0]);
@@ -291,6 +291,7 @@ class MeshPool {
                             const instance = this.templateMesh.createInstance('');
                             instance.isVisible = false;
                             this.instances[i] = instance;
+                            onMeshLoad(this.instances[i]);
                         }
                         break;
                     case PoolType.Cloning:
@@ -298,6 +299,7 @@ class MeshPool {
                             const instance = this.templateMesh.clone();
                             instance.isVisible = false;
                             this.instances[i] = instance;
+                            onMeshLoad(this.instances[i]);
                         }
                         break;
                     case PoolType.SolidParticle:
@@ -1094,9 +1096,12 @@ abstract class Level extends Observable {
         switch(newState) {
             case LevelState.FinishedTower:
                 alert("FINISHED");
-                const boxingRing = new BoxingRing();
-                boxingRing.setSide(Sides.Bottom, this.getHighestBox().getSide(Sides.Top) + 2);
-                game.addPhysBox(boxingRing);
+                const boxingRingBottom = new BoxingRingBottom();
+                boxingRingBottom.setSide(Sides.Bottom, this.getHighestBox().getSide(Sides.Top) + 2);
+                game.addPhysBox(boxingRingBottom);
+                const boxingRingTop = new BoxingRingTop();
+                boxingRingTop.setSide(Sides.Bottom, boxingRingBottom.getSide(Sides.Top) + 2);
+                game.addPhysBox(boxingRingTop);
                 break;
             default:
                 break;
@@ -1315,9 +1320,11 @@ class FloorBox extends PhysBox {
     private static MESH_POOL: MeshPool = new MeshPool(1, PoolType.Instances);
 }
 
-class BoxingRing extends PhysBox{
+class BoxingRingBottom extends PhysBox{
     public static async LoadResources() {
-        await BoxingRing.MESH_POOL.LoadResourcesFromPath('boxingringtop.obj');
+        await BoxingRingBottom.MESH_POOL.LoadResourcesFromPath('boxingringbottom.obj', (mesh) => {
+            mesh.visibility = 0.5;  
+        });
     }
     public constructor() {
         super();
@@ -1325,8 +1332,23 @@ class BoxingRing extends PhysBox{
         this.setNormalizedSize(new BABYLON.Vector3(7,1,7));
         this.setVelocity(new BABYLON.Vector3(0, -0.1, 0));
     }
-    public getMeshPool() : MeshPool { return BoxingRing.MESH_POOL; }
-    private static MESH_POOL: MeshPool = new MeshPool(1, PoolType.Instances);
+    public getMeshPool() : MeshPool { return BoxingRingBottom.MESH_POOL; }
+    private static MESH_POOL: MeshPool = new MeshPool(3, PoolType.Cloning);
+}
+class BoxingRingTop extends PhysBox{
+    public static async LoadResources() {
+        await BoxingRingTop.MESH_POOL.LoadResourcesFromPath('boxingringtop.obj', (mesh) => {
+            //mesh.visibility = 0.5;  
+        });
+    }
+    public constructor() {
+        super();
+        super.setCollisionGroup(CollisionGroups.Level);
+        this.setNormalizedSize(new BABYLON.Vector3(7,1,7));
+        this.setVelocity(new BABYLON.Vector3(0, -0.1, 0));
+    }
+    public getMeshPool() : MeshPool { return BoxingRingTop.MESH_POOL; }
+    private static MESH_POOL: MeshPool = new MeshPool(3, PoolType.Cloning);
 }
 
 class Coin extends PhysBox {
@@ -1661,7 +1683,8 @@ Promise.all([
     FloorBox.LoadResources(),
     Boulder.LoadResouces(),
     Coin.LoadResources(),
-    BoxingRing.LoadResources()
+    BoxingRingBottom.LoadResources(),
+    BoxingRingTop.LoadResources()
 ]).then(() => {
     loadingContainer.isVisible = false;
     menuContainer.isVisible = true;
