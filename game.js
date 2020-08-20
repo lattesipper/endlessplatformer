@@ -1291,7 +1291,7 @@ window.addEventListener('DOMContentLoaded', () => {
         constructor() {
             super();
             super.setCollisionGroup(CollisionGroups.Level);
-            this.setNormalizedSize(new BABYLON.Vector3(7, 1, 7));
+            this.setNormalizedSize(new BABYLON.Vector3(18, 1, 18));
             this.setVelocity(new BABYLON.Vector3(0, -0.1, 0));
         }
         static LoadResources() {
