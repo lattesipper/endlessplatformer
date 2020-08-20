@@ -1095,7 +1095,6 @@ abstract class Level extends Observable {
     private setState(newState) {
         switch(newState) {
             case LevelState.FinishedTower:
-                alert("FINISHED");
                 const boxingRingBottom = new BoxingRingBottom();
                 boxingRingBottom.setSide(Sides.Bottom, this.getHighestBox().getSide(Sides.Top) + 2);
                 game.addPhysBox(boxingRingBottom);
@@ -1135,7 +1134,7 @@ class StartLevel extends Level {
         }, 5000);
     }
     protected getBoxYIncrement(): number { return Math.random() * 3; }
-    protected getApproxTowerHeight(): number { return 3; }
+    protected getApproxTowerHeight(): number { return 100; }
     protected afterFallBoxPositioning(fallBox: FallBox) {
         if (fallBox.getCollisionBuffer(Sides.Top) == 1) {
             fallBox.setCollisionBuffer(Sides.Top, 0);
@@ -1331,6 +1330,7 @@ class BoxingRingBottom extends PhysBox{
         super.setCollisionGroup(CollisionGroups.Level);
         this.setNormalizedSize(new BABYLON.Vector3(18,3.2,18));
         this.setVelocity(new BABYLON.Vector3(0, -0.1, 0));
+        this.setMoverLevel(2);
     }
     public getMeshPool() : MeshPool { return BoxingRingBottom.MESH_POOL; }
     private static MESH_POOL: MeshPool = new MeshPool(3, PoolType.Cloning);
@@ -1346,6 +1346,7 @@ class BoxingRingTop extends PhysBox{
         super.setCollisionGroup(CollisionGroups.Level);
         this.setNormalizedSize(new BABYLON.Vector3(18, 8.3, 18));
         this.setVelocity(new BABYLON.Vector3(0, -0.1, 0));
+        this.setMoverLevel(2);
     }
     public getMeshPool() : MeshPool { return BoxingRingTop.MESH_POOL; }
     private static MESH_POOL: MeshPool = new MeshPool(3, PoolType.Cloning);
@@ -1513,8 +1514,15 @@ class Player extends PhysBox {
     }
 
     public onCollisionStart(side: Sides, physBox: PhysBox) { 
-        if (!Player.SOUND_HIT_HEAD.isPlaying && side == Sides.Top && physBox instanceof FallBox) {
-            Player.SOUND_HIT_HEAD.play();
+        if (side == Sides.Top && physBox instanceof FallBox) {
+            if(!Player.SOUND_HIT_HEAD.isPlaying)
+                Player.SOUND_HIT_HEAD.play();
+            this.setGravity(0);
+            this.fallDelayActive = true;
+            setTimeout(() => {
+                this.fallDelayActive = false;
+                this.setGravity(Player.GRAVITY);
+            }, 150);
         }
         if (physBox instanceof Boulder) {
             this.damadge(physBox);
@@ -1571,7 +1579,7 @@ class Player extends PhysBox {
                 this.getVelocity().y = avgYSpeed;
                 this.setGravity(0);
             }
-        } else {
+        } else if (!this.fallDelayActive) {
             // not sliding, apply GRAVITY as normal
             this.setGravity(Player.GRAVITY);
         }
@@ -1671,6 +1679,7 @@ class Player extends PhysBox {
     private bestHeight: number = 0;
     private explosionParticleSystem: BABYLON.ParticleSystem;
     private health: number = 5;
+    private fallDelayActive: boolean = false;
 
     private static MESH_POOL : MeshPool = new MeshPool(2, PoolType.Cloning);
 }

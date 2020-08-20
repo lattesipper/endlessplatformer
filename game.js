@@ -1062,7 +1062,6 @@ window.addEventListener('DOMContentLoaded', () => {
         setState(newState) {
             switch (newState) {
                 case LevelState.FinishedTower:
-                    alert("FINISHED");
                     const boxingRingBottom = new BoxingRingBottom();
                     boxingRingBottom.setSide(Sides.Bottom, this.getHighestBox().getSide(Sides.Top) + 2);
                     game.addPhysBox(boxingRingBottom);
@@ -1101,7 +1100,7 @@ window.addEventListener('DOMContentLoaded', () => {
             }, 5000);
         }
         getBoxYIncrement() { return Math.random() * 3; }
-        getApproxTowerHeight() { return 3; }
+        getApproxTowerHeight() { return 100; }
         afterFallBoxPositioning(fallBox) {
             if (fallBox.getCollisionBuffer(Sides.Top) == 1) {
                 fallBox.setCollisionBuffer(Sides.Top, 0);
@@ -1293,6 +1292,7 @@ window.addEventListener('DOMContentLoaded', () => {
             super.setCollisionGroup(CollisionGroups.Level);
             this.setNormalizedSize(new BABYLON.Vector3(18, 3.2, 18));
             this.setVelocity(new BABYLON.Vector3(0, -0.1, 0));
+            this.setMoverLevel(2);
         }
         static LoadResources() {
             return __awaiter(this, void 0, void 0, function* () {
@@ -1310,6 +1310,7 @@ window.addEventListener('DOMContentLoaded', () => {
             super.setCollisionGroup(CollisionGroups.Level);
             this.setNormalizedSize(new BABYLON.Vector3(18, 8.3, 18));
             this.setVelocity(new BABYLON.Vector3(0, -0.1, 0));
+            this.setMoverLevel(2);
         }
         static LoadResources() {
             return __awaiter(this, void 0, void 0, function* () {
@@ -1396,6 +1397,7 @@ window.addEventListener('DOMContentLoaded', () => {
             super();
             this.bestHeight = 0;
             this.health = 5;
+            this.fallDelayActive = false;
             this.setCollisionGroup(CollisionGroups.Player);
             this.setTerminalVelocity(Player.MAX_Y_SPEED);
             const particleSystem = new BABYLON.ParticleSystem("particles", 2000, scene);
@@ -1482,8 +1484,15 @@ window.addEventListener('DOMContentLoaded', () => {
             return true;
         }
         onCollisionStart(side, physBox) {
-            if (!Player.SOUND_HIT_HEAD.isPlaying && side == Sides.Top && physBox instanceof FallBox) {
-                Player.SOUND_HIT_HEAD.play();
+            if (side == Sides.Top && physBox instanceof FallBox) {
+                if (!Player.SOUND_HIT_HEAD.isPlaying)
+                    Player.SOUND_HIT_HEAD.play();
+                this.setGravity(0);
+                this.fallDelayActive = true;
+                setTimeout(() => {
+                    this.fallDelayActive = false;
+                    this.setGravity(Player.GRAVITY);
+                }, 150);
             }
             if (physBox instanceof Boulder) {
                 this.damadge(physBox);
@@ -1561,7 +1570,7 @@ window.addEventListener('DOMContentLoaded', () => {
                     this.setGravity(0);
                 }
             }
-            else {
+            else if (!this.fallDelayActive) {
                 // not sliding, apply GRAVITY as normal
                 this.setGravity(Player.GRAVITY);
             }
