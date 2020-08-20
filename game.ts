@@ -1308,7 +1308,7 @@ class FloorBox extends PhysBox {
         super();
         this.setCollisionGroup(CollisionGroups.Level);
         this.setMoverLevel(2);
-        this.setNormalizedSize(new BABYLON.Vector3(18, 8.3, 18));
+        this.setNormalizedSize(new BABYLON.Vector3(14, 2, 14));
         const mesh = BABYLON.MeshBuilder.CreateBox('', {size: 1}, scene);
         const material = new BABYLON.StandardMaterial('', scene);
         material.diffuseTexture = new BABYLON.Texture("https://raw.githubusercontent.com/lattesipper/endlessplatformer/master/resources/images/floorBox.png", scene);
@@ -1344,7 +1344,7 @@ class BoxingRingTop extends PhysBox{
     public constructor() {
         super();
         super.setCollisionGroup(CollisionGroups.Level);
-        this.setNormalizedSize(new BABYLON.Vector3(7,1,7));
+        this.setNormalizedSize(new BABYLON.Vector3(18, 8.3, 18));
         this.setVelocity(new BABYLON.Vector3(0, -0.1, 0));
     }
     public getMeshPool() : MeshPool { return BoxingRingTop.MESH_POOL; }
