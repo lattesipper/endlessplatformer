@@ -274,6 +274,46 @@ enum PoolType {
     Cloning,
     SolidParticle // unimplemented
 }
+
+class GameTimer {
+    public update(deltaT: number) {
+        if (!this.running || this.paused)
+            return;
+        this.currentT += deltaT;
+        while (this.currentT >= this.triggerT) {
+            this.currentT -= this.triggerT;
+            this.executeCallback();
+            if (!this.repeats) {
+                this.running = false;
+                break;
+            }
+        }
+    }
+    public pause() { console.assert(this.running && !this.paused); this.paused = true; }
+    public resume() { console.assert(this.running && this.paused); this.paused = false; }
+    public start(callback: CallableFunction, triggerT: number, repeats: boolean) {
+        console.assert(!this.running);
+        this.executeCallback = callback;
+        this.triggerT = triggerT;
+        this.currentT = 0;
+        this.repeats = repeats;
+        this.running = true;
+    }
+    public stop() {
+        console.assert(this.running);
+        this.running = false;
+    }
+    public isRunning() : boolean { return this.running; }
+    public isPaused() : boolean { return this.paused; }
+
+    private running: boolean = false;
+    private paused: boolean = false;
+    private repeats: boolean = false;
+    private currentT: number = 0;
+    private triggerT: number = 0;
+    private executeCallback: CallableFunction;
+}
+
 class MeshPool {
     public constructor(instanceCount: number, poolType: PoolType) {
         this.instances = new Array(instanceCount);
@@ -492,130 +532,6 @@ class Game {
         lavaMaterial.blendMode = BABYLON.Engine.ALPHA_MULTIPLY;
         Game.MESH_LAVA = lava;
     }
-    public getHighestPhysBox() : PhysBox { return this.physBoxesSortedY[this.physBoxesSortedY.length - 1]; }
-    private changeMode(mode: GameMode) {
-        switch(mode) {
-            case GameMode.Playing:
-                // show only the gameplay container
-                gameOverContainer.isVisible = false;
-                gameplayContainer.isVisible = true;
-                this.mode = GameMode.Playing;       // set mode1
-                break;2
-            case GameMode.Spectating:
-                console.assert(this.mode == GameMode.Playing && this.canPause);
-                // fade out background music, the game is over
-                UtilityFunctions.fadeOutSound(Game.BACKGROUND_MUSIC, 1);
-                // we don't want pausing during the delay between playing and spectating
-                this.canPause = false;
-                // delay transition to spectator mode by 3 seconds, creating an effective death-cam hang
-                setTimeout(() => {
-                    // show only the game over container
-                    gameplayContainer.isVisible = false;
-                    gameOverContainer.isVisible = true;
-                    // reset camera position to the start of the level, and orientate to side
-                    camera.setY(0);
-                    camera.setBeta(Math.PI / 2);
-                    camera.setRadius(50);
-                    // reset lava position to the beginning
-                    this.lava.position.y = -15;
-                    // start the drumroll as the spectator camera moves up
-                    Game.SOUND_DRUMROLL_REPEAT.play();
-                    this.mode = GameMode.Spectating;    // set mode
-                }, 3000);
-                break;
-            case GameMode.Paused:
-                break;
-        }
-    }
-    private update() {
-        t++;
-        // paused games don't update
-        if (!this.running)
-            return;
-        // perform state-specific update
-        switch(this.mode) {
-            case GameMode.Playing:
-                this.updatePlaying();
-                break;
-            case GameMode.Spectating:
-                this.updateSpectating();
-                break;
-        }
-        // update visible phys-boxes based on camera location
-        this.updateVisiblePhysBoxes();
-    }
-    private updatePlaying() {
-        // update lava position, moving at either a standard or fast pace depending on distance from player
-        if ((this.player.getPos().y - this.lava.position.y) < Game.PLAYER_DISTANCE_FOR_FAST_LAVA) {
-            this.lava.position.y += Game.LAVA_SPEED_STANDARD;
-        } else {
-            this.lava.position.y += Game.LAVA_SPEED_FAST;
-        }
-        // sort the physbox list for efficient sort&sweep collisions as well as visibility checking
-        this.ySortBoxes();
-        // resolve physbox collisions
-        for (let i = this.updateCutoffYIndex; i < this.physBoxesSortedY.length; i++) 
-        { const pbox = this.physBoxesSortedY[i]; if (pbox.isActive()) pbox.beforeCollisions(); }
-        for (let i = this.updateCutoffYIndex; i < this.physBoxesSortedY.length; i++) 
-        { const pbox = this.physBoxesSortedY[i]; if (pbox.isActive()) pbox.resolveCollisions(0); }
-        for (let i = this.updateCutoffYIndex; i < this.physBoxesSortedY.length; i++) 
-        { const pbox = this.physBoxesSortedY[i]; if (pbox.isActive()) pbox.afterCollisions(); }
-        // update level logic
-        this.currentLevel.update();
-    }
-    private updateSpectating() {
-        if (!this.towerFlyByComplte) {
-            const slowDownY = this.player.getPos().y - 32.256000000000014;
-            if (camera.getY() < 32.256000000000014) {
-                this.cameraSpeed += 0.016;
-            } else if (camera.getY() > slowDownY) {
-                this.cameraSpeed -= 0.016;
-            }
-            camera.setY(camera.getY() + this.cameraSpeed);
-            if (this.cameraSpeed <= 0 || (camera.getY() >= this.player.getPos().y)) {
-                this.finishTowerFlyBy();
-            }
-        }
-    }
-    private updateVisiblePhysBoxes() {
-        const startYValue = camera.getY() - 50;
-        const endYValue = camera.getY() + 50;
-        const cameraYIndex = this.getClosestYIndex(camera.getY());
-        let searchYDown = cameraYIndex;
-        while (searchYDown >= 0 && (this.physBoxesSortedY[searchYDown].getPos().y >= startYValue)) {
-            const physbox = this.physBoxesSortedY[searchYDown];
-            if (!physbox.isObservable())
-                continue;
-            if (!this.observedEntitiesLastUpdate.has(physbox))
-                physbox.startObservation();
-            searchYDown--;
-            this.observedEntitiesThisUpdate.add(physbox);
-        }
-        let searchYUp = cameraYIndex;
-        while (searchYUp < this.physBoxesSortedY.length && (this.physBoxesSortedY[searchYUp].getPos().y <= endYValue)) {
-            const physbox = this.physBoxesSortedY[searchYUp];
-            if (!physbox.isObservable())
-                continue;
-            if (!this.observedEntitiesLastUpdate.has(physbox))
-                physbox.startObservation();
-            searchYUp++;
-            this.observedEntitiesThisUpdate.add(physbox);
-        }
-        
-        this.observedEntitiesLastUpdate.forEach((physBox) => {
-            if (!this.observedEntitiesThisUpdate.has(physBox))
-                physBox.endObservation();
-        });
-        const tmp = this.observedEntitiesLastUpdate;
-        this.observedEntitiesLastUpdate = this.observedEntitiesThisUpdate;
-        this.observedEntitiesThisUpdate = tmp;
-        this.observedEntitiesThisUpdate.clear();
-    }
-    private finishTowerFlyBy() {
-        this.towerFlyByComplte = true;
-        Game.SOUND_DRUMROLL_REPEAT.stop();
-        Game.SOUND_DRUMROLL_STOP.play();
-    }
     public dispose() {
         Game.SOUND_DRUMROLL_REPEAT.stop();
         Game.BACKGROUND_MUSIC.stop();
@@ -624,13 +540,14 @@ class Game {
         this.lava.dispose();
         this.callbackFunctions.forEach((func) => func());
     }
+
     public getLavaLevel() : number { return this.lava.position.y - 1; }
     public pause() { this.running = false; }
     public play() { this.running = true; }
     public isPaused() { return !this.running; }
     public start() {
         // setup update callback
-        this.updateCallbackFunc = (() => this.update());
+        this.updateCallbackFunc = (() => this.update(1/60));
         scene.onBeforeRenderObservable.add(this.updateCallbackFunc);
 
         // setup pause callback
@@ -677,7 +594,9 @@ class Game {
         this.addPhysBox(player);
         this.callbackFunctions.push(
             player.onEvent('death', () => {
-                this.changeMode(GameMode.Spectating);
+                UtilityFunctions.fadeOutSound(Game.BACKGROUND_MUSIC, 1);
+                this.canPause = false;
+                this.spectateDelayTimer.start(() => this.changeMode(GameMode.Spectating), Game.DEATH_SPECTATE_DELAY, false);
             })
         );
         this.player = player;
@@ -698,29 +617,119 @@ class Game {
     }
 
     public addPhysBox(box) { this.physBoxesSortedY.push(box); this.physBoxToYIndex.set(box, this.getClosestYIndex(box.getPos().y)); }
-
     public getPhysObjects() { return this.physBoxesSortedY; }
     public getPlayer() : Player { return this.player; }
 
-    // SORT
-    private ySortBoxes() { 
-        // O(N) average case for insertion sort after physbox updates
-        for (let i = this.updateCutoffYIndex; i < this.physBoxesSortedY.length; i++) {
-            let j = i - 1;
-            let tmp = this.physBoxesSortedY[i];
-            while (j >= 0 && this.physBoxesSortedY[j].getPos().y > tmp.getPos().y) {
-                this.physBoxesSortedY[j + 1] = this.physBoxesSortedY[j];
-                j--
-            }
-            this.physBoxesSortedY[j+1] = tmp;
-            this.physBoxToYIndex.set(tmp, j+1);
+    private changeMode(mode: GameMode) {
+        switch(mode) {
+            case GameMode.Playing:
+                // show only the gameplay container
+                gameOverContainer.isVisible = false;
+                gameplayContainer.isVisible = true;
+                break;
+            case GameMode.Spectating:
+                console.assert(this.mode == GameMode.Playing && this.canPause);
+                // show only the game over container
+                gameplayContainer.isVisible = false;
+                gameOverContainer.isVisible = true;
+                // reset camera position to the start of the level, and orientate to side
+                camera.setY(0);
+                camera.setBeta(Math.PI / 2);
+                camera.setRadius(50);
+                // reset lava position to the beginning
+                this.lava.position.y = -15;
+                // start the drumroll as the spectator camera moves up
+                Game.SOUND_DRUMROLL_REPEAT.play();
+                break;
+            case GameMode.Paused:
+                break;
         }
-        // Update cutoff y index (anything below is lost to the lava, and need not be resorted or updated)
-        for (let i = this.updateCutoffYIndex; i < this.physBoxesSortedY.length; i++) {
-            if (this.physBoxesSortedY[i].getPos().y < (this.lava.position.y - Game.MAXIMUM_YDISTANCE_UNDER_LAVA))
-                this.updateCutoffYIndex = i;
+        this.mode = mode;
+    }
+    private update(deltaT: number) {
+        t++;
+        if (!this.running)
+            return;
+        switch(this.mode) {
+            case GameMode.Playing:
+                this.updatePlaying(deltaT);
+                break;
+            case GameMode.Spectating:
+                this.updateSpectating(deltaT);
+                break;
+        }
+        this.updateVisiblePhysBoxes();
+    }
+    private updateVisiblePhysBoxes() {
+        const visiblePhysBoxes = this.getPhysBoxesInRange(camera.getY() - 50, camera.getY() + 50);
+        visiblePhysBoxes.forEach((physbox) => {
+            if (physbox.isObservable())
+                this.observedEntitiesThisUpdate.add(physbox);
+        });
+        this.observedEntitiesLastUpdate.forEach((physBox) => {
+            if (!this.observedEntitiesThisUpdate.has(physBox))
+                physBox.endObservation();
+        });
+        this.observedEntitiesThisUpdate.forEach((physBox) => {
+            if (!this.observedEntitiesLastUpdate.has(physBox))
+                physBox.startObservation();
+        });
+        const tmp = this.observedEntitiesLastUpdate;
+        this.observedEntitiesLastUpdate = this.observedEntitiesThisUpdate;
+        this.observedEntitiesThisUpdate = tmp;
+        this.observedEntitiesThisUpdate.clear();
+    }
+    private updatePlaying(deltaT: number) {
+        // update lava position, moving at either a standard or fast pace depending on distance from player
+        if ((this.player.getPos().y - this.lava.position.y) < Game.PLAYER_DISTANCE_FOR_FAST_LAVA) {
+            this.lava.position.y += Game.LAVA_SPEED_STANDARD;
+        } else {
+            this.lava.position.y += Game.LAVA_SPEED_FAST;
+        }
+        // resolve physbox collisions
+        this.ySortBoxes();
+        const physboxes = this.getPhysBoxesInRange(this.lava.position.y - Game.MAXIMUM_YDISTANCE_UNDER_LAVA, 99999);
+        physboxes.forEach(pbox => pbox.beforeCollisions(deltaT));
+        physboxes.forEach(pbox => pbox.resolveCollisions(0));
+        physboxes.forEach(pbox => pbox.afterCollisions(deltaT));
+        // update level logic
+        this.currentLevel.update(deltaT);
+        // update timers
+        this.spectateDelayTimer.update(deltaT);
+    }
+    private updateSpectating(deltaT: number) {
+        if (!this.towerFlyByComplte) {
+            const slowDownY = this.player.getPos().y - 32.256000000000014;
+            if (camera.getY() < 32.256000000000014) {
+                this.cameraSpeed += 0.016;
+            } else if (camera.getY() > slowDownY) {
+                this.cameraSpeed -= 0.016;
+            }
+            camera.setY(camera.getY() + this.cameraSpeed);
+            if (this.cameraSpeed <= 0 || (camera.getY() >= this.player.getPos().y)) {
+                this.finishTowerFlyBy();
+            }
         }
     }
+    private finishTowerFlyBy() {
+        this.towerFlyByComplte = true;
+        Game.SOUND_DRUMROLL_REPEAT.stop();
+        Game.SOUND_DRUMROLL_STOP.play();
+    }
+
+    private getPhysBoxesInRange(startYValue: number, endYValue: number) : Array<PhysBox> {
+        const physBoxes : Array<PhysBox> = [];
+        let searchYUp : number = this.getClosestYIndex(startYValue);
+        while (searchYUp < this.physBoxesSortedY.length && (this.physBoxesSortedY[searchYUp].getPos().y <= endYValue)) {
+            const physbox = this.physBoxesSortedY[searchYUp];
+            searchYUp++;
+            if (!physbox.isDisposed())
+                physBoxes.push(physbox);
+        }
+        return physBoxes;
+    }
+
+    // SWEEP AND PRUNE
     private getClosestYIndex(yValue) {
         let low = 0;
         let high = this.physBoxesSortedY.length - 1;
@@ -733,7 +742,20 @@ class Game {
         }
         return Math.min(low, this.physBoxesSortedY.length-1);
     }
-    // SWEEP AND PRUNE
+    private ySortBoxes() { 
+        // O(N) average case for insertion sort after physbox updates thanks to temporal coherence
+        const cutoffYIndex = this.getClosestYIndex(this.lava.position.y - Game.MAXIMUM_YDISTANCE_UNDER_LAVA);
+        for (let i = cutoffYIndex; i < this.physBoxesSortedY.length; i++) {
+            let j = i - 1;
+            let tmp = this.physBoxesSortedY[i];
+            while (j >= 0 && this.physBoxesSortedY[j].getPos().y > tmp.getPos().y) {
+                this.physBoxesSortedY[j + 1] = this.physBoxesSortedY[j];
+                j--
+            }
+            this.physBoxesSortedY[j+1] = tmp;
+            this.physBoxToYIndex.set(tmp, j+1);
+        }
+    }
     public getCollisions(physBox: PhysBox) {
         let yIndex = this.physBoxToYIndex.get(physBox);
         let collisions = [];
@@ -741,7 +763,7 @@ class Game {
         for (let i = yIndex; i >= 0; i--) {
             let candiate = this.physBoxesSortedY[i];
             tests++;
-            if (candiate.isActive() && physBox.physicallyIntersects(candiate))
+            if (!candiate.isDisposed() && physBox.physicallyIntersects(candiate))
                 collisions.push(candiate);
             if (physBox.getSide(Sides.Bottom) > (candiate.getPos().y + (PhysBox.MAXIMUM_HEIGHT/2)))
                 break;
@@ -749,7 +771,7 @@ class Game {
         for (let i = yIndex; i < this.physBoxesSortedY.length; i++) {
             tests++;
             let candiate = this.physBoxesSortedY[i];
-            if (candiate.isActive() && physBox.physicallyIntersects(candiate))
+            if (!candiate.isDisposed() && physBox.physicallyIntersects(candiate))
                 collisions.push(candiate);
             if (physBox.getSide(Sides.Top) < (candiate.getPos().y - (PhysBox.MAXIMUM_HEIGHT/2)))
                 break;
@@ -769,27 +791,36 @@ class Game {
     private static LAVA_SPEED_STANDARD: number = 0.0275;
     private static LAVA_SPEED_FAST: number = 0.1;
     private static MAXIMUM_YDISTANCE_UNDER_LAVA: number = 100;
+    private static DEATH_SPECTATE_DELAY: number = 3;
 
-    private cameraSpeed: number = 0;
 
     private mode: GameMode = GameMode.Playing;
-    private canPause: boolean = true;
 
+    // shared mode variables
+    private canPause: boolean = true;
+    private running : boolean = true;
+
+    // playing mode variables
+    private currentLevel: Level = null;
+
+    // spectate mode variables
+    private spectateDelayTimer: GameTimer = new GameTimer();
+    private towerFlyByComplte: boolean = false;
+    private cameraSpeed: number = 0;
+
+    // callbacks
     private updateCallbackFunc;
     private callbackFunctions : Array<CallableFunction> = [];
 
-    private running : boolean = true;
-    private currentLevel: Level = null;
-
+    // sorted entities
     private physBoxesSortedY: Array<PhysBox> = [];
     private physBoxToYIndex = new Map<PhysBox, number>();
-    private updateCutoffYIndex: number = 0;
 
-    private towerFlyByComplte: boolean = false;
-
+    // observed entities
     private observedEntitiesThisUpdate: Set<PhysBox> = new Set();
     private observedEntitiesLastUpdate: Set<PhysBox> = new Set();
 
+    // important entities
     private player: Player;
     private lava: BABYLON.TransformNode;
 }
@@ -836,7 +867,6 @@ abstract class PhysBox extends GameObj {
     public getTerminalVelocity() : number { return this.terminalVelocity; }
 
     // status flags
-    public isActive() : boolean { return this.active; }
     public disable() { 
         if (this.instance)
             this.instance.isVisible = false;
@@ -860,7 +890,7 @@ abstract class PhysBox extends GameObj {
     public setCollisionBuffer(side: Sides, extent: number) { return this.collisionBuffers.set(side, extent); }
     public clearCollisionBuffer() { Sides.All.forEach(side => this.collisionBuffers.set(side, 0)); }
 
-    public logicallyIntersects(otherBox: PhysBox) : boolean { return otherBox.isActive() && this.getCollisionGroup().collides(otherBox.getCollisionGroup()); }
+    public logicallyIntersects(otherBox: PhysBox) : boolean { return this.getCollisionGroup().collides(otherBox.getCollisionGroup()); }
     public physicallyIntersects(otherBox: PhysBox) : boolean {
         // physboxes can't collide with themselves
         if (otherBox == this)
@@ -885,14 +915,17 @@ abstract class PhysBox extends GameObj {
         this.instance = this.getMeshPool().getMesh();
         this.instance.scaling = BABYLON.Vector3.One().scale(this.scaling);
         this.instance.position = this.getPos();
-        this.instance.isVisible = this.isActive();
+        this.afterStartObservation();
     }
     public endObservation() {
         if (!this.instance)
             return
+        this.beforeEndObservation();
         this.getMeshPool().returnMesh(this.instance);
         this.instance = null;
     }
+    protected afterStartObservation() {}
+    protected beforeEndObservation() {}
 
     // collision callbacks
     public onCollisionStart(side: Sides, physBox: PhysBox) { }
@@ -909,14 +942,14 @@ abstract class PhysBox extends GameObj {
     public onCollisionStop(side: Sides, physBox: PhysBox) { }
 
     // collision steps
-    public beforeCollisions() {
+    public beforeCollisions(deltaT: number) {
         // swap collision lists for last update and this update, and clear the later
         let tmp = this.collisionsThisUpdate;
         this.collisionsLastUpdate.forEach((collisions, side) => collisions.clear());
         this.collisionsThisUpdate = this.collisionsLastUpdate;
         this.collisionsLastUpdate = tmp;
     }
-    public afterCollisions() {
+    public afterCollisions(deltaT: number) {
         // determine collisions started and held
         this.collisionsThisUpdate.forEach((collisions, side) => {
             collisions.forEach((collision) => {
@@ -1061,11 +1094,11 @@ abstract class Level extends Observable {
     protected abstract afterFallBoxPositioning(fallBox: FallBox);
     protected getHighestBox(): FallBox { return this.myboxes.length != 0 ? this.myboxes[this.myboxes.length - 1] : null; }
     protected abstract getBoxYIncrement(): number;
-    public update() {
+    public update(deltaT: number) {
         switch(this.levelState) {
             case LevelState.GeneratingTower: this.updateStateGeneratingTower(); break;
-            case LevelState.FinishedTower: break;
-            case LevelState.Boss: break;
+            case LevelState.FinishedTower: this.updateStateFinishedTower(); break;
+            case LevelState.Boss: this.updateStateBoss(); break;
         }
     }
     public updateStateGeneratingTower() {
@@ -1117,24 +1150,9 @@ abstract class Level extends Observable {
 class StartLevel extends Level {
     public constructor() {
         super();
-        for (var i = 0; i < 3; i++) {
-            const boulder = new Boulder();
-            this.boulders.push(boulder);
-            game.addPhysBox(boulder);
-        }
-        setInterval(() => {
-            if (Math.random() > 0.5) {
-                const launchCount = Math.floor(Math.random() / 0.334) + 1;
-                let launched = 0;
-                for (let i = 0; (i < 3) && (launched < launchCount); i++) {
-                    if (this.boulders[i].launch())
-                        launched++;
-                }
-            }
-        }, 5000);
     }
     protected getBoxYIncrement(): number { return Math.random() * 3; }
-    protected getApproxTowerHeight(): number { return 100; }
+    protected getApproxTowerHeight(): number { return 300; }
     protected afterFallBoxPositioning(fallBox: FallBox) {
         if (fallBox.getCollisionBuffer(Sides.Top) == 1) {
             fallBox.setCollisionBuffer(Sides.Top, 0);
@@ -1162,136 +1180,135 @@ class StartLevel extends Level {
         fallbox.setVelocity(new BABYLON.Vector3(0, -0.1, 0));
         return fallbox;
     }
-    private boulders: Array<Boulder> = [];
 }
 
-enum BoulderState {
-    Waiting,
-    GoingUp,
-    GoingDown
-}
-class Boulder extends PhysBox {
-    public getMeshPool() : MeshPool { return Boulder.MESH_POOL; }
-    public static async LoadResouces() {
-        const obj = BABYLON.MeshBuilder.CreateSphere('', {diameter: 3}, scene);
-        const material = new BABYLON.StandardMaterial('', scene);
-        material.diffuseTexture = new BABYLON.Texture('https://cdnb.artstation.com/p/assets/images/images/010/604/427/large/nick-rossi-gam322-nrossi-m11-lava.jpg', scene);
-        material.disableLighting = true;
-        material.emissiveColor = new BABYLON.Color3(1,1,1);
-        obj.material = material;
-        await Boulder.MESH_POOL.LoadResourcesFromMesh(obj);
-    }
-    public startObservation() {
-        super.startObservation(); 
-        this.smokeSystem.emitter = this.getMeshInstance();
-        this.fireSystem.emitter = this.getMeshInstance();
-    }
-    public endObservation() {
-        super.endObservation(); 
-        this.smokeSystem.emitter = null;
-        this.fireSystem.emitter = null;
-    }
-    public constructor() {
-        super();
-        this.setTerminalVelocity(0.3); 
-        this.setNormalizedSize(new BABYLON.Vector3(3,3,3));
-        this.setCollisionGroup(CollisionGroups.FloatEnemy);
-        //Smoke
-        var smokeSystem = new BABYLON.ParticleSystem("particles", 1000, scene);
-        smokeSystem.particleTexture = new BABYLON.Texture("https://raw.githubusercontent.com/lattesipper/endlessplatformer/master/resources/images/flare.png", scene);
-        //smokeSystem.emitter = obj; // the starting object, the emitter
-        smokeSystem.minEmitBox = new BABYLON.Vector3(-0.75, 0, -0.75); // Starting all from
-        smokeSystem.maxEmitBox = new BABYLON.Vector3(1, 0, 1); // To...
-        smokeSystem.color1 = new BABYLON.Color4(0.02, 0.02, 0.02, .02);
-        smokeSystem.color2 = new BABYLON.Color4(0.02, 0.02, 0.02, .02);
-        smokeSystem.colorDead = new BABYLON.Color4(0, 0, 0, 0.0);
-        smokeSystem.minSize = 1;
-        smokeSystem.maxSize = 3;
-        smokeSystem.minLifeTime = 0.3;
-        smokeSystem.maxLifeTime = 1.5;
-        smokeSystem.emitRate = 700;
-        smokeSystem.blendMode = BABYLON.ParticleSystem.BLENDMODE_ONEONE;
-        smokeSystem.gravity = new BABYLON.Vector3(0, 0, 0);
-        smokeSystem.direction1 = new BABYLON.Vector3(-1.5, -1 + Math.random(), -1.5);
-        smokeSystem.direction2 = new BABYLON.Vector3(1.5, -1 + Math.random(), 1.5);
-        smokeSystem.minAngularSpeed = 0;
-        smokeSystem.maxAngularSpeed = Math.PI;
-        smokeSystem.minEmitPower = 0.5;
-        smokeSystem.maxEmitPower = 1.5;
-        smokeSystem.updateSpeed = 0.005;
-        var fireSystem = new BABYLON.ParticleSystem("particles", 2000, scene);
-        fireSystem.particleTexture = new BABYLON.Texture("https://raw.githubusercontent.com/lattesipper/endlessplatformer/master/resources/images/flare.png", scene);
-        //fireSystem.emitter = obj; // the starting object, the emitter
-        fireSystem.minEmitBox = new BABYLON.Vector3(-1, 0, -1); // Starting all from
-        fireSystem.maxEmitBox = new BABYLON.Vector3(1, 0, 1); // To...
-        fireSystem.color1 = new BABYLON.Color4(1, 0.5, 0, 1.0);
-        fireSystem.color2 = new BABYLON.Color4(1, 0.5, 0, 1.0);
-        fireSystem.colorDead = new BABYLON.Color4(0, 0, 0, 0.0);
-        fireSystem.minSize = 0.3;
-        fireSystem.maxSize = 1;
-        fireSystem.minLifeTime = 0.2;
-        fireSystem.maxLifeTime = 0.4;
-        fireSystem.emitRate = 1200;
-        fireSystem.blendMode = BABYLON.ParticleSystem.BLENDMODE_ONEONE;
-        fireSystem.gravity = new BABYLON.Vector3(0, 0, 0);
-        fireSystem.direction1 = new BABYLON.Vector3(0, -1 + Math.random(), 0);
-        fireSystem.direction2 = new BABYLON.Vector3(0, -1 + Math.random(), 0);
-        fireSystem.minAngularSpeed = 0;
-        fireSystem.maxAngularSpeed = Math.PI;
-        fireSystem.minEmitPower = 1;
-        fireSystem.maxEmitPower = 3;
-        fireSystem.updateSpeed = 0.007;
-        this.smokeSystem = smokeSystem;
-        this.fireSystem = fireSystem;
-        //this.obj.isVisible = false;
-        this.disable();
-    }
-    public dispose() {
-        super.dispose();
-        this.smokeSystem.dispose();
-        this.fireSystem.dispose();
-    }
-    public launch() : boolean {
-        if (this.myState != BoulderState.Waiting)
-            return false;
-        this.enable();
-        this.setGravity(0);
-        this.setPos(new BABYLON.Vector3(-5 + Math.random() * 10, game.getLavaLevel() - 30, -5 + Math.random() * 10));
-        this.setVelocity(new BABYLON.Vector3(0, 0.3, 0));
-        this.smokeSystem.start();
-        this.fireSystem.start();
-        this.myState = BoulderState.GoingUp;
-        //this.obj.isVisible = true;
-        return true;
-    }
-    public afterCollisions() {
-        super.afterCollisions();
-        switch(this.myState) {
-            case BoulderState.Waiting:
-                this.getPos().y = game.getLavaLevel() - 30;
-                break;
-            case BoulderState.GoingUp:
-                if ((this.getPos().y > game.getPlayer().getPos().y + 10)) {
-                    this.setGravity(0.01);
-                    this.myState = BoulderState.GoingDown;
-                }
-                break;
-            case BoulderState.GoingDown:
-                if (this.getPos().y < (game.getLavaLevel() - 30)) {
-                    this.myState = BoulderState.Waiting;
-                    this.smokeSystem.stop();
-                    this.fireSystem.stop();
-                    //this.obj.isVisible = false;
-                    this.disable();
-                }
-                break;
-        }
-    }
-    private smokeSystem: BABYLON.ParticleSystem;
-    private fireSystem: BABYLON.ParticleSystem;
-    private myState: BoulderState = BoulderState.Waiting;
-    private static MESH_POOL: MeshPool = new MeshPool(10, PoolType.Instances);
-}
+// enum BoulderState {
+//     Waiting,
+//     GoingUp,
+//     GoingDown
+// }
+// class Boulder extends PhysBox {
+//     public getMeshPool() : MeshPool { return Boulder.MESH_POOL; }
+//     public static async LoadResouces() {
+//         const obj = BABYLON.MeshBuilder.CreateSphere('', {diameter: 3}, scene);
+//         const material = new BABYLON.StandardMaterial('', scene);
+//         material.diffuseTexture = new BABYLON.Texture('https://cdnb.artstation.com/p/assets/images/images/010/604/427/large/nick-rossi-gam322-nrossi-m11-lava.jpg', scene);
+//         material.disableLighting = true;
+//         material.emissiveColor = new BABYLON.Color3(1,1,1);
+//         obj.material = material;
+//         await Boulder.MESH_POOL.LoadResourcesFromMesh(obj);
+//     }
+//     public startObservation() {
+//         super.startObservation(); 
+//         this.smokeSystem.emitter = this.getMeshInstance();
+//         this.fireSystem.emitter = this.getMeshInstance();
+//     }
+//     public endObservation() {
+//         super.endObservation(); 
+//         this.smokeSystem.emitter = null;
+//         this.fireSystem.emitter = null;
+//     }
+//     public constructor() {
+//         super();
+//         this.setTerminalVelocity(0.3); 
+//         this.setNormalizedSize(new BABYLON.Vector3(3,3,3));
+//         this.setCollisionGroup(CollisionGroups.FloatEnemy);
+//         //Smoke
+//         var smokeSystem = new BABYLON.ParticleSystem("particles", 1000, scene);
+//         smokeSystem.particleTexture = new BABYLON.Texture("https://raw.githubusercontent.com/lattesipper/endlessplatformer/master/resources/images/flare.png", scene);
+//         //smokeSystem.emitter = obj; // the starting object, the emitter
+//         smokeSystem.minEmitBox = new BABYLON.Vector3(-0.75, 0, -0.75); // Starting all from
+//         smokeSystem.maxEmitBox = new BABYLON.Vector3(1, 0, 1); // To...
+//         smokeSystem.color1 = new BABYLON.Color4(0.02, 0.02, 0.02, .02);
+//         smokeSystem.color2 = new BABYLON.Color4(0.02, 0.02, 0.02, .02);
+//         smokeSystem.colorDead = new BABYLON.Color4(0, 0, 0, 0.0);
+//         smokeSystem.minSize = 1;
+//         smokeSystem.maxSize = 3;
+//         smokeSystem.minLifeTime = 0.3;
+//         smokeSystem.maxLifeTime = 1.5;
+//         smokeSystem.emitRate = 700;
+//         smokeSystem.blendMode = BABYLON.ParticleSystem.BLENDMODE_ONEONE;
+//         smokeSystem.gravity = new BABYLON.Vector3(0, 0, 0);
+//         smokeSystem.direction1 = new BABYLON.Vector3(-1.5, -1 + Math.random(), -1.5);
+//         smokeSystem.direction2 = new BABYLON.Vector3(1.5, -1 + Math.random(), 1.5);
+//         smokeSystem.minAngularSpeed = 0;
+//         smokeSystem.maxAngularSpeed = Math.PI;
+//         smokeSystem.minEmitPower = 0.5;
+//         smokeSystem.maxEmitPower = 1.5;
+//         smokeSystem.updateSpeed = 0.005;
+//         var fireSystem = new BABYLON.ParticleSystem("particles", 2000, scene);
+//         fireSystem.particleTexture = new BABYLON.Texture("https://raw.githubusercontent.com/lattesipper/endlessplatformer/master/resources/images/flare.png", scene);
+//         //fireSystem.emitter = obj; // the starting object, the emitter
+//         fireSystem.minEmitBox = new BABYLON.Vector3(-1, 0, -1); // Starting all from
+//         fireSystem.maxEmitBox = new BABYLON.Vector3(1, 0, 1); // To...
+//         fireSystem.color1 = new BABYLON.Color4(1, 0.5, 0, 1.0);
+//         fireSystem.color2 = new BABYLON.Color4(1, 0.5, 0, 1.0);
+//         fireSystem.colorDead = new BABYLON.Color4(0, 0, 0, 0.0);
+//         fireSystem.minSize = 0.3;
+//         fireSystem.maxSize = 1;
+//         fireSystem.minLifeTime = 0.2;
+//         fireSystem.maxLifeTime = 0.4;
+//         fireSystem.emitRate = 1200;
+//         fireSystem.blendMode = BABYLON.ParticleSystem.BLENDMODE_ONEONE;
+//         fireSystem.gravity = new BABYLON.Vector3(0, 0, 0);
+//         fireSystem.direction1 = new BABYLON.Vector3(0, -1 + Math.random(), 0);
+//         fireSystem.direction2 = new BABYLON.Vector3(0, -1 + Math.random(), 0);
+//         fireSystem.minAngularSpeed = 0;
+//         fireSystem.maxAngularSpeed = Math.PI;
+//         fireSystem.minEmitPower = 1;
+//         fireSystem.maxEmitPower = 3;
+//         fireSystem.updateSpeed = 0.007;
+//         this.smokeSystem = smokeSystem;
+//         this.fireSystem = fireSystem;
+//         //this.obj.isVisible = false;
+//         this.disable();
+//     }
+//     public dispose() {
+//         super.dispose();
+//         this.smokeSystem.dispose();
+//         this.fireSystem.dispose();
+//     }
+//     public launch() : boolean {
+//         if (this.myState != BoulderState.Waiting)
+//             return false;
+//         this.enable();
+//         this.setGravity(0);
+//         this.setPos(new BABYLON.Vector3(-5 + Math.random() * 10, game.getLavaLevel() - 30, -5 + Math.random() * 10));
+//         this.setVelocity(new BABYLON.Vector3(0, 0.3, 0));
+//         this.smokeSystem.start();
+//         this.fireSystem.start();
+//         this.myState = BoulderState.GoingUp;
+//         //this.obj.isVisible = true;
+//         return true;
+//     }
+//     public afterCollisions(deltaT: number) {
+//         super.afterCollisions(deltaT);
+//         switch(this.myState) {
+//             case BoulderState.Waiting:
+//                 this.getPos().y = game.getLavaLevel() - 30;
+//                 break;
+//             case BoulderState.GoingUp:
+//                 if ((this.getPos().y > game.getPlayer().getPos().y + 10)) {
+//                     this.setGravity(0.01);
+//                     this.myState = BoulderState.GoingDown;
+//                 }
+//                 break;
+//             case BoulderState.GoingDown:
+//                 if (this.getPos().y < (game.getLavaLevel() - 30)) {
+//                     this.myState = BoulderState.Waiting;
+//                     this.smokeSystem.stop();
+//                     this.fireSystem.stop();
+//                     //this.obj.isVisible = false;
+//                     this.disable();
+//                 }
+//                 break;
+//         }
+//     }
+//     private smokeSystem: BABYLON.ParticleSystem;
+//     private fireSystem: BABYLON.ParticleSystem;
+//     private myState: BoulderState = BoulderState.Waiting;
+//     private static MESH_POOL: MeshPool = new MeshPool(10, PoolType.Instances);
+// }
 
 class FloorBox extends PhysBox {
     public static async LoadResources() {
@@ -1364,8 +1381,8 @@ class Coin extends PhysBox {
         this.setNormalizedSize(new BABYLON.Vector3(1,1,1));
     }
     public getMeshPool() : MeshPool { return Coin.MESH_POOL; }
-    public beforeCollisions() {
-        super.beforeCollisions();
+    public beforeCollisions(deltaT: number) {
+        super.beforeCollisions(deltaT);
         const mesh = this.getMeshInstance();
         if (mesh) {
             mesh.rotation.y = Coin.getYRotation();
@@ -1374,12 +1391,12 @@ class Coin extends PhysBox {
     public onCollisionStart(side: Sides, physBox : PhysBox) {
         super.onCollisionStart(side, physBox);
         if (physBox instanceof Player) {
-            this.disable();
+            this.dispose();
             Coin.SOUND_COIN.play();
         }
     }
-    public afterCollisions() {
-        super.afterCollisions();
+    public afterCollisions(deltaT: number) {
+        super.afterCollisions(deltaT);
         if (this.getCollisions(Sides.Bottom).size != 0 && this.getCollisions(Sides.Top).size != 0) {
             this.dispose();
         }
@@ -1395,6 +1412,17 @@ abstract class FallBox extends PhysBox {
         this.setMoverLevel(2);
         this.setCollisionGroup(CollisionGroups.Level);
         this.color = new BABYLON.Color4(0.5 + Math.random() * 0.5, 0.5 + Math.random() * 0.5, 0.5 + Math.random() * 0.5, 1);
+    }
+    public break() {
+        this.unfreezeBoxesAbove();
+        this.dispose();
+    }
+    private unfreezeBoxesAbove() {
+        this.unfreeze();
+        this.getCollisions(Sides.Top).forEach(physBox => {
+            if (physBox instanceof FallBox)
+                (<FallBox>physBox).unfreezeBoxesAbove();
+        });
     }
     public onCollisionStart(side: Sides, physBox : PhysBox) {
         super.onCollisionStart(side, physBox);
@@ -1417,9 +1445,6 @@ class FallBoxBasic extends FallBox {
     public getMeshPool() : MeshPool {
         return FallBoxBasic.MESH_POOL;
     }
-    public startObservation() {
-        super.startObservation();
-    }
     private static MESH_POOL: MeshPool = new MeshPool(300, PoolType.Instances);
 }
 
@@ -1436,14 +1461,12 @@ class Player extends PhysBox {
         super.dispose();
         this.explosionParticleSystem.dispose();
     }
-    public startObservation() {
-        super.startObservation();
+    public afterStartObservation() {
         this.explosionParticleSystem.emitter = this.getMeshInstance();
         shadowGenerator.addShadowCaster(this.getMeshInstance());
     }
-    public endObservation() {
+    public beforeEndObservation() {
         shadowGenerator.removeShadowCaster(this.getMeshInstance());
-        super.endObservation();
         this.explosionParticleSystem.emitter = null;
     }
 
@@ -1483,7 +1506,7 @@ class Player extends PhysBox {
         super.disable();
     }
     public kill() {
-        this.disable();
+        this.dispose();
         this.explosionParticleSystem.start();
         Player.SOUND_DEATH.play();
         this.fire('death', true);
@@ -1518,15 +1541,13 @@ class Player extends PhysBox {
             if(!Player.SOUND_HIT_HEAD.isPlaying)
                 Player.SOUND_HIT_HEAD.play();
             this.setGravity(0);
-            this.fallDelayActive = true;
-            setTimeout(() => {
-                this.fallDelayActive = false;
+            this.fallDelayTimer.start(() => {
                 this.setGravity(Player.GRAVITY);
-            }, 150);
+            }, 0.2, false);
         }
-        if (physBox instanceof Boulder) {
-            this.damadge(physBox);
-        }
+        // if (physBox instanceof Boulder) {
+        //     this.damadge(physBox);
+        // }
     }
 
     private determineVelocities() {
@@ -1579,7 +1600,7 @@ class Player extends PhysBox {
                 this.getVelocity().y = avgYSpeed;
                 this.setGravity(0);
             }
-        } else if (!this.fallDelayActive) {
+        } else if (!this.fallDelayTimer.isRunning()) {
             // not sliding, apply GRAVITY as normal
             this.setGravity(Player.GRAVITY);
         }
@@ -1626,12 +1647,14 @@ class Player extends PhysBox {
             }
         }
     }
-    public beforeCollisions() {
-        super.beforeCollisions();
+    public beforeCollisions(deltaT: number) {
+        super.beforeCollisions(deltaT);
         this.determineVelocities();
     }
-    public afterCollisions() {
-        super.afterCollisions();
+    public afterCollisions(deltaT: number) {
+        super.afterCollisions(deltaT);
+
+        this.fallDelayTimer.update(deltaT);
 
         camera.setY(this.getPos().y);
 
@@ -1679,7 +1702,7 @@ class Player extends PhysBox {
     private bestHeight: number = 0;
     private explosionParticleSystem: BABYLON.ParticleSystem;
     private health: number = 5;
-    private fallDelayActive: boolean = false;
+    private fallDelayTimer: GameTimer = new GameTimer();
 
     private static MESH_POOL : MeshPool = new MeshPool(2, PoolType.Cloning);
 }
@@ -1690,7 +1713,7 @@ Promise.all([
     GameCamera.LoadResources(),
     FallBoxBasic.LoadResources(),
     FloorBox.LoadResources(),
-    Boulder.LoadResouces(),
+   // Boulder.LoadResouces(),
     Coin.LoadResources(),
     BoxingRingBottom.LoadResources(),
     BoxingRingTop.LoadResources()
