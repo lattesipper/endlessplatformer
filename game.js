@@ -21,6 +21,12 @@ window.addEventListener('DOMContentLoaded', () => {
     scene.fogColor = new BABYLON.Color3(1, 0, 0);
     scene.clearColor = new BABYLON.Color4(1, 0, 0, 1.0);
     scene.ambientColor = new BABYLON.Color3(0.1, 0.1, 0.1);
+    var loadedMb = 0;
+    var totalMb = 13.8;
+    function updateLoadedMb(mb) {
+        loadedMb += mb;
+        $('#divLoadBar').width((mb / totalMb) + '%');
+    }
     var light2 = new BABYLON.DirectionalLight("DirectionalLight", new BABYLON.Vector3(0, -1, 0), scene);
     light2.intensity = 2.0;
     light2.autoUpdateExtends = false;
@@ -38,20 +44,48 @@ window.addEventListener('DOMContentLoaded', () => {
     let game;
     let t = 0;
     class LoadFunctions {
-        static loadSound(path) {
+        static loadSound(name, sizeInMb = 0) {
             return __awaiter(this, void 0, void 0, function* () {
                 let loadedSound;
                 yield new Promise((resolve) => {
-                    loadedSound = new BABYLON.Sound("", path, scene, resolve, {
+                    loadedSound = new BABYLON.Sound("", LoadFunctions.RESOURCE_PATH + '/sounds/' + name, scene, resolve, {
                         loop: false,
                         autoplay: false,
                         volume: 0.5
                     });
                 });
+                updateLoadedMb(sizeInMb);
                 return loadedSound;
             });
         }
+        static loadMesh(name, sizeInMb = 0) {
+            return __awaiter(this, void 0, void 0, function* () {
+                let loadedMesh;
+                yield new Promise((resolve) => {
+                    BABYLON.SceneLoader.ImportMesh("", LoadFunctions.RESOURCE_PATH + '/meshes/', name, scene, (meshes, particleSystems, skeletons) => {
+                        loadedMesh = meshes[0];
+                        resolve();
+                    });
+                });
+                updateLoadedMb(sizeInMb);
+                return loadedMesh;
+            });
+        }
+        static loadTexture(name, sizeInMb = 0) {
+            return __awaiter(this, void 0, void 0, function* () {
+                let loadedTexture = new BABYLON.Texture(this.RESOURCE_PATH + '/textures/' + name, scene);
+                yield new Promise((resolve) => {
+                    loadedTexture.onLoadObservable.addOnce(() => {
+                        resolve();
+                    });
+                });
+                updateLoadedMb(sizeInMb);
+                return loadedTexture;
+            });
+        }
     }
+    //private static RESOURCE_PATH = 'file:///C:/Users/kjgre/Documents/GitHub/endlessplatformer/resources';
+    LoadFunctions.RESOURCE_PATH = 'https://rawcdn.githack.com/lattesipper/endlessplatformer/ca1deb6c9b2ef414866425fdcd1159bf1657cfa2/resources';
     class UtilityFunctions {
         static fadeSound(sound, fadeTimeInSeconds, targetVolume, easingFunction = (t) => t, onDone = () => { }) {
             let t = 0;
@@ -314,37 +348,32 @@ window.addEventListener('DOMContentLoaded', () => {
             this.instances = new Array(instanceCount);
             this.poolType = poolType;
         }
-        LoadResourcesFromPath(meshName, onMeshLoad = (mesh) => { }) {
+        LoadResourcesFromPath(meshName, onMeshLoad = (mesh) => { }, sizeInMb = 0) {
             return __awaiter(this, void 0, void 0, function* () {
-                yield new Promise((resolve) => {
-                    BABYLON.SceneLoader.ImportMesh("", "https://raw.githubusercontent.com/lattesipper/endlessplatformer/master/resources/meshes/", meshName, scene, (meshes, particleSystems, skeletons) => {
-                        this.templateMesh = (meshes[0]);
-                        this.templateMesh.isVisible = false;
-                        this.templateMesh.receiveShadows = true;
-                        switch (this.poolType) {
-                            case PoolType.Instances:
-                                for (let i = 0; i < this.instances.length; i++) {
-                                    const instance = this.templateMesh.createInstance('');
-                                    instance.isVisible = false;
-                                    this.instances[i] = instance;
-                                    onMeshLoad(this.instances[i]);
-                                }
-                                break;
-                            case PoolType.Cloning:
-                                for (let i = 0; i < this.instances.length; i++) {
-                                    const instance = this.templateMesh.clone();
-                                    instance.isVisible = false;
-                                    this.instances[i] = instance;
-                                    onMeshLoad(this.instances[i]);
-                                }
-                                break;
-                            case PoolType.SolidParticle:
-                                console.assert(false);
-                                break;
+                this.templateMesh = yield LoadFunctions.loadMesh(meshName, sizeInMb);
+                this.templateMesh.isVisible = false;
+                this.templateMesh.receiveShadows = true;
+                switch (this.poolType) {
+                    case PoolType.Instances:
+                        for (let i = 0; i < this.instances.length; i++) {
+                            const instance = this.templateMesh.createInstance('');
+                            instance.isVisible = false;
+                            this.instances[i] = instance;
+                            onMeshLoad(this.instances[i]);
                         }
-                        resolve();
-                    });
-                });
+                        break;
+                    case PoolType.Cloning:
+                        for (let i = 0; i < this.instances.length; i++) {
+                            const instance = this.templateMesh.clone();
+                            instance.isVisible = false;
+                            this.instances[i] = instance;
+                            onMeshLoad(this.instances[i]);
+                        }
+                        break;
+                    case PoolType.SolidParticle:
+                        console.assert(false);
+                        break;
+                }
             });
         }
         LoadResourcesFromMesh(mesh) {
@@ -457,7 +486,7 @@ window.addEventListener('DOMContentLoaded', () => {
         }
         static LoadResources() {
             return __awaiter(this, void 0, void 0, function* () {
-                GameCamera.rotateSound = yield LoadFunctions.loadSound("https://raw.githubusercontent.com/lattesipper/endlessplatformer/master/resources/sounds/rotateView.wav");
+                GameCamera.rotateSound = yield LoadFunctions.loadSound("rotateView.wav");
             });
         }
         setY(y) { this.node.position.y = y; }
@@ -529,19 +558,19 @@ window.addEventListener('DOMContentLoaded', () => {
         static LoadResources() {
             return __awaiter(this, void 0, void 0, function* () {
                 // load sounds
-                Game.BACKGROUND_MUSIC = yield LoadFunctions.loadSound("https://raw.githubusercontent.com/lattesipper/endlessplatformer/master/resources/music/dreamsofabove.mp3");
-                Game.BACKGROUND_MUSIC.loop = true;
-                Game.SOUND_PAUSE_IN = yield LoadFunctions.loadSound("https://raw.githubusercontent.com/lattesipper/endlessplatformer/master/resources/sounds/pauseIn.wav");
-                Game.SOUND_PAUSE_OUT = yield LoadFunctions.loadSound("https://raw.githubusercontent.com/lattesipper/endlessplatformer/master/resources/sounds/pauseOut.wav");
-                Game.SOUND_DRUMROLL_REPEAT = yield LoadFunctions.loadSound("https://raw.githubusercontent.com/lattesipper/endlessplatformer/master/resources/sounds/drumroll.mp3");
-                Game.SOUND_DRUMROLL_STOP = yield LoadFunctions.loadSound("https://raw.githubusercontent.com/lattesipper/endlessplatformer/master/resources/sounds/drumrollStop.mp3");
+                //Game.BACKGROUND_MUSIC = await LoadFunctions.loadSound("https://raw.githubusercontent.com/lattesipper/endlessplatformer/master/resources/music/dreamsofabove.mp3");
+                //Game.BACKGROUND_MUSIC.loop = true;
+                Game.SOUND_PAUSE_IN = yield LoadFunctions.loadSound("pauseIn.wav");
+                Game.SOUND_PAUSE_OUT = yield LoadFunctions.loadSound("pauseOut.wav");
+                Game.SOUND_DRUMROLL_REPEAT = yield LoadFunctions.loadSound("drumroll.mp3");
+                Game.SOUND_DRUMROLL_STOP = yield LoadFunctions.loadSound("drumrollStop.mp3");
                 // load lava mesh
                 const lava = BABYLON.Mesh.CreateGround("ground", 150, 150, 25, scene);
                 lava.visibility = 0.5;
                 lava.position.y = -20;
                 const lavaMaterial = new BABYLON.LavaMaterial("lava", scene);
-                lavaMaterial.noiseTexture = new BABYLON.Texture("https://www.babylonjs-playground.com/textures/lava/cloud.png", scene); // Set the bump texture
-                lavaMaterial.diffuseTexture = new BABYLON.Texture("https://www.babylonjs-playground.com/textures/lava/lavatile.jpg", scene); // Set the diffuse texture
+                lavaMaterial.noiseTexture = yield LoadFunctions.loadTexture("cloud.png"); // Set the bump texture
+                lavaMaterial.diffuseTexture = yield LoadFunctions.loadTexture("lavatile.jpg"); // Set the diffuse texture
                 lavaMaterial.speed = 0.5;
                 lavaMaterial.fogColor = new BABYLON.Color3(1, 0, 0);
                 lavaMaterial.unlit = true;
@@ -554,7 +583,7 @@ window.addEventListener('DOMContentLoaded', () => {
         }
         dispose() {
             Game.SOUND_DRUMROLL_REPEAT.stop();
-            Game.BACKGROUND_MUSIC.stop();
+            //Game.BACKGROUND_MUSIC.stop();
             scene.onBeforeRenderObservable.removeCallback(this.updateCallbackFunc);
             this.physBoxesSortedY.forEach((physBox) => physBox.dispose());
             this.lava.dispose();
@@ -574,13 +603,13 @@ window.addEventListener('DOMContentLoaded', () => {
                     switch (key) {
                         case 'p':
                             if (this.running) {
-                                Game.BACKGROUND_MUSIC.pause();
+                                //Game.BACKGROUND_MUSIC.pause();
                                 pauseContainer.isVisible = true;
                                 this.running = false;
                                 Game.SOUND_PAUSE_IN.play();
                             }
                             else {
-                                Game.BACKGROUND_MUSIC.play();
+                                //Game.BACKGROUND_MUSIC.play();
                                 pauseContainer.isVisible = false;
                                 this.running = true;
                                 Game.SOUND_PAUSE_OUT.play();
@@ -607,7 +636,7 @@ window.addEventListener('DOMContentLoaded', () => {
             player.setSide(Sides.Bottom, bottomBox.getSide(Sides.Top) + 0.5);
             this.addPhysBox(player);
             this.callbackFunctions.push(player.onEvent('death', () => {
-                UtilityFunctions.fadeOutSound(Game.BACKGROUND_MUSIC, 1);
+                //UtilityFunctions.fadeOutSound(Game.BACKGROUND_MUSIC, 1);
                 this.canPause = false;
                 this.spectateDelayTimer.start(() => this.changeMode(GameMode.Spectating), Game.DEATH_SPECTATE_DELAY, false);
             }));
@@ -616,10 +645,10 @@ window.addEventListener('DOMContentLoaded', () => {
             // create initial cube cluster
             this.currentLevel = new StartLevel();
             // play background music
-            Game.BACKGROUND_MUSIC.loop = true;
-            Game.BACKGROUND_MUSIC.setVolume(0); // FINDME
+            //Game.BACKGROUND_MUSIC.loop = true;
+            //Game.BACKGROUND_MUSIC.setVolume(0); // FINDME
             // Game.BACKGROUND_MUSIC.setVolume(0.5);
-            Game.BACKGROUND_MUSIC.play();
+            //Game.BACKGROUND_MUSIC.play();
             camera.resetRotationindex();
             camera.setBeta(0.65);
             camera.setRadius(25);
@@ -635,7 +664,7 @@ window.addEventListener('DOMContentLoaded', () => {
                     gameplayContainer.isVisible = true;
                     break;
                 case GameMode.Spectating:
-                    console.assert(this.mode == GameMode.Playing && this.canPause);
+                    console.assert(this.mode == GameMode.Playing);
                     // show only the game over container
                     gameplayContainer.isVisible = false;
                     gameOverContainer.isVisible = true;
@@ -1269,19 +1298,12 @@ window.addEventListener('DOMContentLoaded', () => {
             this.setCollisionGroup(CollisionGroups.Level);
             this.setMoverLevel(2);
             this.setNormalizedSize(new BABYLON.Vector3(14, 2, 14));
-            const mesh = BABYLON.MeshBuilder.CreateBox('', { size: 1 }, scene);
-            const material = new BABYLON.StandardMaterial('', scene);
-            material.diffuseTexture = new BABYLON.Texture("https://raw.githubusercontent.com/lattesipper/endlessplatformer/master/resources/images/floorBox.png", scene);
-            material.freeze();
-            mesh.material = material;
-            mesh.position = this.getPos();
-            mesh.scaling = BABYLON.Vector3.One();
         }
         static LoadResources() {
             return __awaiter(this, void 0, void 0, function* () {
                 const mesh = BABYLON.MeshBuilder.CreateBox('', { width: 14, height: 2, depth: 14 }, scene);
                 const material = new BABYLON.StandardMaterial('', scene);
-                material.diffuseTexture = new BABYLON.Texture("https://raw.githubusercontent.com/lattesipper/endlessplatformer/master/resources/images/floorBox.png", scene);
+                material.diffuseTexture = yield LoadFunctions.loadTexture("floorBox.png");
                 material.freeze();
                 mesh.material = material;
                 yield this.MESH_POOL.LoadResourcesFromMesh(mesh);
@@ -1334,7 +1356,7 @@ window.addEventListener('DOMContentLoaded', () => {
         }
         static LoadResources() {
             return __awaiter(this, void 0, void 0, function* () {
-                Coin.SOUND_COIN = yield LoadFunctions.loadSound("https://raw.githubusercontent.com/lattesipper/endlessplatformer/master/resources/sounds/coinCollect.wav");
+                Coin.SOUND_COIN = yield LoadFunctions.loadSound("coinCollect.wav");
                 yield Coin.MESH_POOL.LoadResourcesFromPath('coin.obj');
             });
         }
@@ -1440,10 +1462,10 @@ window.addEventListener('DOMContentLoaded', () => {
         }
         static LoadResources() {
             return __awaiter(this, void 0, void 0, function* () {
-                Player.SOUND_DAMAGE = yield LoadFunctions.loadSound("https://raw.githubusercontent.com/lattesipper/endlessplatformer/master/resources/sounds/damage.wav");
-                Player.SOUND_JUMP = yield LoadFunctions.loadSound("https://raw.githubusercontent.com/lattesipper/endlessplatformer/master/resources/sounds/jump.wav");
-                Player.SOUND_HIT_HEAD = yield LoadFunctions.loadSound("https://raw.githubusercontent.com/lattesipper/endlessplatformer/master/resources/sounds/hitHead.wav");
-                Player.SOUND_DEATH = yield LoadFunctions.loadSound("https://raw.githubusercontent.com/lattesipper/endlessplatformer/master/resources/sounds/death.wav");
+                Player.SOUND_DAMAGE = yield LoadFunctions.loadSound("damage.wav");
+                Player.SOUND_JUMP = yield LoadFunctions.loadSound("jump.wav");
+                Player.SOUND_HIT_HEAD = yield LoadFunctions.loadSound("hitHead.wav");
+                Player.SOUND_DEATH = yield LoadFunctions.loadSound("death.wav");
                 yield Player.MESH_POOL.LoadResourcesFromPath('player.obj');
             });
         }
@@ -1653,8 +1675,7 @@ window.addEventListener('DOMContentLoaded', () => {
             }
             // Update GUI
             this.bestHeight = Math.max(this.getPos().y, this.bestHeight);
-            // gameplayContainer.getChildByName('currentheight').text = Math.round(this.getPos().y) + "ft";
-            // gameplayContainer.getChildByName('maxheight').text = Math.round(this.bestHeight) + "ft";
+            $('#txtInGameFt').html(Math.round(this.getPos().y) + "ft");
         }
     }
     // CONSTANTS

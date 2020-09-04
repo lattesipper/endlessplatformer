@@ -16,6 +16,13 @@ scene.fogColor = new BABYLON.Color3(1, 0, 0);
 scene.clearColor = new BABYLON.Color4(1, 0, 0, 1.0);
 scene.ambientColor = new BABYLON.Color3(0.1, 0.1, 0.1);
 
+var loadedMb = 0;
+var totalMb = 13.8;
+function updateLoadedMb(mb) {
+    loadedMb += mb;
+    $('#divLoadBar').width((mb / totalMb)+'%');
+}
+
 
 var light2 = new BABYLON.DirectionalLight("DirectionalLight", new BABYLON.Vector3(0, -1, 0), scene);
 light2.intensity = 2.0;
@@ -37,17 +44,41 @@ let game;
 let t = 0;
 
 class LoadFunctions {
-    public static async loadSound(path: string) : Promise<BABYLON.Sound> {
+    public static async loadSound(name: string, sizeInMb: number = 0) : Promise<BABYLON.Sound> {
         let loadedSound: BABYLON.Sound;
         await new Promise((resolve) => {
-            loadedSound = new BABYLON.Sound("", path, scene, resolve, {
+            loadedSound = new BABYLON.Sound("", LoadFunctions.RESOURCE_PATH + '/sounds/' + name, scene, resolve, {
                 loop: false,
                 autoplay:  false,
                 volume: 0.5
             });
         });
+        updateLoadedMb(sizeInMb);
         return loadedSound;
     }
+    public static async loadMesh(name: string, sizeInMb: number = 0) : Promise<BABYLON.Mesh> {
+        let loadedMesh: BABYLON.Mesh;
+        await new Promise((resolve) => {
+            BABYLON.SceneLoader.ImportMesh("", LoadFunctions.RESOURCE_PATH + '/meshes/', name, scene, (meshes, particleSystems, skeletons) => {
+                loadedMesh = <BABYLON.Mesh>meshes[0];
+                resolve();
+            });
+        });
+        updateLoadedMb(sizeInMb);
+        return loadedMesh;
+    }
+    public static async loadTexture(name: string, sizeInMb: number = 0) : Promise<BABYLON.Texture> {
+        let loadedTexture: BABYLON.Texture = new BABYLON.Texture(this.RESOURCE_PATH + '/textures/' + name, scene);
+        await new Promise((resolve) => {
+            loadedTexture.onLoadObservable.addOnce(() => {
+                resolve();
+            });
+        });
+        updateLoadedMb(sizeInMb);
+        return loadedTexture;
+    }
+    //private static RESOURCE_PATH = 'file:///C:/Users/kjgre/Documents/GitHub/endlessplatformer/resources';
+    private static RESOURCE_PATH = 'https://rawcdn.githack.com/lattesipper/endlessplatformer/ca1deb6c9b2ef414866425fdcd1159bf1657cfa2/resources';
 }
 class UtilityFunctions {
     public static fadeSound(sound: BABYLON.Sound, fadeTimeInSeconds : number, targetVolume: number, easingFunction = (t) => t, onDone = () => {}) {
@@ -319,36 +350,31 @@ class MeshPool {
         this.instances = new Array(instanceCount);
         this.poolType = poolType;
     }
-    public async LoadResourcesFromPath(meshName : string, onMeshLoad = (mesh) => {}) {
-        await new Promise((resolve) => {
-            BABYLON.SceneLoader.ImportMesh("", "https://raw.githubusercontent.com/lattesipper/endlessplatformer/master/resources/meshes/", meshName, scene, (meshes, particleSystems, skeletons) => {
-                this.templateMesh = <BABYLON.Mesh>(meshes[0]);
-                this.templateMesh.isVisible = false;
-                this.templateMesh.receiveShadows = true;
-                switch(this.poolType) {
-                    case PoolType.Instances:
-                        for (let i = 0; i < this.instances.length; i++) {
-                            const instance = this.templateMesh.createInstance('');
-                            instance.isVisible = false;
-                            this.instances[i] = instance;
-                            onMeshLoad(this.instances[i]);
-                        }
-                        break;
-                    case PoolType.Cloning:
-                        for (let i = 0; i < this.instances.length; i++) {
-                            const instance = this.templateMesh.clone();
-                            instance.isVisible = false;
-                            this.instances[i] = instance;
-                            onMeshLoad(this.instances[i]);
-                        }
-                        break;
-                    case PoolType.SolidParticle:
-                        console.assert(false);
-                        break;
+    public async LoadResourcesFromPath(meshName : string, onMeshLoad = (mesh) => {}, sizeInMb: number = 0) {
+        this.templateMesh = await LoadFunctions.loadMesh(meshName, sizeInMb);
+        this.templateMesh.isVisible = false;
+        this.templateMesh.receiveShadows = true;
+        switch(this.poolType) {
+            case PoolType.Instances:
+                for (let i = 0; i < this.instances.length; i++) {
+                    const instance = this.templateMesh.createInstance('');
+                    instance.isVisible = false;
+                    this.instances[i] = instance;
+                    onMeshLoad(this.instances[i]);
                 }
-                resolve();
-            });
-        });
+                break;
+            case PoolType.Cloning:
+                for (let i = 0; i < this.instances.length; i++) {
+                    const instance = this.templateMesh.clone();
+                    instance.isVisible = false;
+                    this.instances[i] = instance;
+                    onMeshLoad(this.instances[i]);
+                }
+                break;
+            case PoolType.SolidParticle:
+                console.assert(false);
+                break;
+        }
     }
     public async LoadResourcesFromMesh(mesh: BABYLON.Mesh) : Promise<any> {
         await new Promise((resolve) => {
@@ -420,7 +446,7 @@ class InputManager extends Observable {
 // Singleton camera, rotates in 90 degree increments
 class GameCamera {
     public static async LoadResources() : Promise<any> {
-        GameCamera.rotateSound = await LoadFunctions.loadSound("https://raw.githubusercontent.com/lattesipper/endlessplatformer/master/resources/sounds/rotateView.wav");
+        GameCamera.rotateSound = await LoadFunctions.loadSound("rotateView.wav");
     }
     public setY(y: number) { this.node.position.y = y }
     public getY() : number { return this.node.position.y }
@@ -510,19 +536,19 @@ enum GameMode {
 class Game {
     public static async LoadResources() : Promise<any> {
         // load sounds
-        Game.BACKGROUND_MUSIC = await LoadFunctions.loadSound("https://raw.githubusercontent.com/lattesipper/endlessplatformer/master/resources/music/dreamsofabove.mp3");
-        Game.BACKGROUND_MUSIC.loop = true;
-        Game.SOUND_PAUSE_IN = await LoadFunctions.loadSound("https://raw.githubusercontent.com/lattesipper/endlessplatformer/master/resources/sounds/pauseIn.wav");
-        Game.SOUND_PAUSE_OUT = await LoadFunctions.loadSound("https://raw.githubusercontent.com/lattesipper/endlessplatformer/master/resources/sounds/pauseOut.wav");
-        Game.SOUND_DRUMROLL_REPEAT = await LoadFunctions.loadSound("https://raw.githubusercontent.com/lattesipper/endlessplatformer/master/resources/sounds/drumroll.mp3");
-        Game.SOUND_DRUMROLL_STOP = await LoadFunctions.loadSound("https://raw.githubusercontent.com/lattesipper/endlessplatformer/master/resources/sounds/drumrollStop.mp3");
+        //Game.BACKGROUND_MUSIC = await LoadFunctions.loadSound("https://raw.githubusercontent.com/lattesipper/endlessplatformer/master/resources/music/dreamsofabove.mp3");
+        //Game.BACKGROUND_MUSIC.loop = true;
+        Game.SOUND_PAUSE_IN = await LoadFunctions.loadSound("pauseIn.wav");
+        Game.SOUND_PAUSE_OUT = await LoadFunctions.loadSound("pauseOut.wav");
+        Game.SOUND_DRUMROLL_REPEAT = await LoadFunctions.loadSound("drumroll.mp3");
+        Game.SOUND_DRUMROLL_STOP = await LoadFunctions.loadSound("drumrollStop.mp3");
         // load lava mesh
         const lava = BABYLON.Mesh.CreateGround("ground", 150, 150, 25, scene);
         lava.visibility = 0.5;
         lava.position.y = -20;
         const lavaMaterial = new BABYLON.LavaMaterial("lava", scene);	
-        lavaMaterial.noiseTexture = new BABYLON.Texture("https://www.babylonjs-playground.com/textures/lava/cloud.png", scene); // Set the bump texture
-        lavaMaterial.diffuseTexture = new BABYLON.Texture("https://www.babylonjs-playground.com/textures/lava/lavatile.jpg", scene); // Set the diffuse texture
+        lavaMaterial.noiseTexture = await LoadFunctions.loadTexture("cloud.png"); // Set the bump texture
+        lavaMaterial.diffuseTexture = await LoadFunctions.loadTexture("lavatile.jpg"); // Set the diffuse texture
         lavaMaterial.speed = 0.5;
         lavaMaterial.fogColor = new BABYLON.Color3(1, 0, 0);
         lavaMaterial.unlit = true;
@@ -534,7 +560,7 @@ class Game {
     }
     public dispose() {
         Game.SOUND_DRUMROLL_REPEAT.stop();
-        Game.BACKGROUND_MUSIC.stop();
+        //Game.BACKGROUND_MUSIC.stop();
         scene.onBeforeRenderObservable.removeCallback(this.updateCallbackFunc);
         this.physBoxesSortedY.forEach((physBox) => physBox.dispose());
         this.lava.dispose();
@@ -557,12 +583,12 @@ class Game {
                     switch(key) {
                         case 'p':
                             if (this.running) {
-                                Game.BACKGROUND_MUSIC.pause();
+                                //Game.BACKGROUND_MUSIC.pause();
                                 pauseContainer.isVisible = true;
                                 this.running = false;
                                 Game.SOUND_PAUSE_IN.play();
                             } else {
-                                Game.BACKGROUND_MUSIC.play();
+                                //Game.BACKGROUND_MUSIC.play();
                                 pauseContainer.isVisible = false;
                                 this.running = true;
                                 Game.SOUND_PAUSE_OUT.play();
@@ -594,7 +620,7 @@ class Game {
         this.addPhysBox(player);
         this.callbackFunctions.push(
             player.onEvent('death', () => {
-                UtilityFunctions.fadeOutSound(Game.BACKGROUND_MUSIC, 1);
+                //UtilityFunctions.fadeOutSound(Game.BACKGROUND_MUSIC, 1);
                 this.canPause = false;
                 this.spectateDelayTimer.start(() => this.changeMode(GameMode.Spectating), Game.DEATH_SPECTATE_DELAY, false);
             })
@@ -607,10 +633,10 @@ class Game {
         this.currentLevel = new StartLevel();
 
         // play background music
-        Game.BACKGROUND_MUSIC.loop = true;
-        Game.BACKGROUND_MUSIC.setVolume(0); // FINDME
+        //Game.BACKGROUND_MUSIC.loop = true;
+        //Game.BACKGROUND_MUSIC.setVolume(0); // FINDME
         // Game.BACKGROUND_MUSIC.setVolume(0.5);
-        Game.BACKGROUND_MUSIC.play();
+        //Game.BACKGROUND_MUSIC.play();
         camera.resetRotationindex();
         camera.setBeta(0.65);
         camera.setRadius(25);
@@ -628,7 +654,7 @@ class Game {
                 gameplayContainer.isVisible = true;
                 break;
             case GameMode.Spectating:
-                console.assert(this.mode == GameMode.Playing && this.canPause);
+                console.assert(this.mode == GameMode.Playing);
                 // show only the game over container
                 gameplayContainer.isVisible = false;
                 gameOverContainer.isVisible = true;
@@ -1314,7 +1340,7 @@ class FloorBox extends PhysBox {
     public static async LoadResources() {
         const mesh = BABYLON.MeshBuilder.CreateBox('', {width: 14, height: 2, depth: 14}, scene);
         const material = new BABYLON.StandardMaterial('', scene);
-        material.diffuseTexture = new BABYLON.Texture("https://raw.githubusercontent.com/lattesipper/endlessplatformer/master/resources/images/floorBox.png", scene);
+        material.diffuseTexture = await LoadFunctions.loadTexture("floorBox.png");
         material.freeze();
         mesh.material = material;
         await this.MESH_POOL.LoadResourcesFromMesh(mesh);
@@ -1325,13 +1351,6 @@ class FloorBox extends PhysBox {
         this.setCollisionGroup(CollisionGroups.Level);
         this.setMoverLevel(2);
         this.setNormalizedSize(new BABYLON.Vector3(14, 2, 14));
-        const mesh = BABYLON.MeshBuilder.CreateBox('', {size: 1}, scene);
-        const material = new BABYLON.StandardMaterial('', scene);
-        material.diffuseTexture = new BABYLON.Texture("https://raw.githubusercontent.com/lattesipper/endlessplatformer/master/resources/images/floorBox.png", scene);
-        material.freeze();
-        mesh.material = material;
-        mesh.position = this.getPos();
-        mesh.scaling = BABYLON.Vector3.One();
     }
     private static MESH_POOL: MeshPool = new MeshPool(1, PoolType.Instances);
 }
@@ -1371,7 +1390,7 @@ class BoxingRingTop extends PhysBox{
 
 class Coin extends PhysBox {
     public static async LoadResources() {
-        Coin.SOUND_COIN = await LoadFunctions.loadSound("https://raw.githubusercontent.com/lattesipper/endlessplatformer/master/resources/sounds/coinCollect.wav");
+        Coin.SOUND_COIN = await LoadFunctions.loadSound("coinCollect.wav");
         await Coin.MESH_POOL.LoadResourcesFromPath('coin.obj');
     }
     private static getYRotation() : number { return (t / 60) * (Math.PI * 2) * this.REVS_PER_SECOND; }
@@ -1450,10 +1469,10 @@ class FallBoxBasic extends FallBox {
 
 class Player extends PhysBox {
     public static async LoadResources() {
-        Player.SOUND_DAMAGE = await LoadFunctions.loadSound("https://raw.githubusercontent.com/lattesipper/endlessplatformer/master/resources/sounds/damage.wav");
-        Player.SOUND_JUMP = await LoadFunctions.loadSound("https://raw.githubusercontent.com/lattesipper/endlessplatformer/master/resources/sounds/jump.wav");
-        Player.SOUND_HIT_HEAD = await LoadFunctions.loadSound("https://raw.githubusercontent.com/lattesipper/endlessplatformer/master/resources/sounds/hitHead.wav");
-        Player.SOUND_DEATH = await LoadFunctions.loadSound("https://raw.githubusercontent.com/lattesipper/endlessplatformer/master/resources/sounds/death.wav");
+        Player.SOUND_DAMAGE = await LoadFunctions.loadSound("damage.wav");
+        Player.SOUND_JUMP = await LoadFunctions.loadSound("jump.wav");
+        Player.SOUND_HIT_HEAD = await LoadFunctions.loadSound("hitHead.wav");
+        Player.SOUND_DEATH = await LoadFunctions.loadSound("death.wav");
         await Player.MESH_POOL.LoadResourcesFromPath('player.obj');
     }
     public getMeshPool() : MeshPool { return Player.MESH_POOL; }
@@ -1672,8 +1691,8 @@ class Player extends PhysBox {
 
         // Update GUI
         this.bestHeight = Math.max(this.getPos().y, this.bestHeight);
-        // gameplayContainer.getChildByName('currentheight').text = Math.round(this.getPos().y) + "ft";
-        // gameplayContainer.getChildByName('maxheight').text = Math.round(this.bestHeight) + "ft";
+
+        $('#txtInGameFt').html(Math.round(this.getPos().y) + "ft");
     }
 
     // RESOURCES

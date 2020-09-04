@@ -14,6 +14,18 @@
                 padding: 0;
             }
 
+            .stateOverlay {
+                width:100%; height:100%; position: fixed; pointer-events: none
+            }
+
+            #divMenuOverlay {
+                background-color: red;
+            }
+
+            #divLoadingOverlay {
+                background-color: black;
+            }
+
             #renderCanvas {
                 width: 100%;
                 height: 100%;
@@ -21,11 +33,12 @@
             }
 
             @font-face {
-                font-family: 'oswald';
-                src: url('/font/oswald.regular.ttf');
+                font-family: 'bdcartoon';
+                src: url('https://raw.githubusercontent.com/lattesipper/endlessplatformer/master/resources/fonts/BD_Cartoon_Shout.ttf');
             }
         </style>
 
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.5.1/jquery.min.js"></script>
         <script src="https://cdn.babylonjs.com/babylon.js"></script>
         <script src="https://cdn.babylonjs.com/gui/babylon.gui.min.js"></script>
         <script src="https://cdn.babylonjs.com/loaders/babylonjs.loaders.min.js"></script>
@@ -35,15 +48,38 @@
     </head>
 
    <body>
-    <div style="width:100%; height:100%; position: fixed; pointer-events: none">
-        <div style="width:20%; left:40%; height: 10%; position: absolute; background-color: rgba(255, 0, 0, 0.5); text-align: center; vertical-align: center;">
-            <span style="font-size: 7.5vh; -webkit-text-stroke: 0.5vh black; color: white">
-                100FT
+    <div id="divMenuOverlay" class="stateOverlay">
+
+    </div>
+    <div id="divInGameOverlay" class="stateOverlay">
+        <div style="width:20vw; left:40vw; height: 10vh; position: absolute; background-color: rgba(255, 0, 0, 0.5); text-align: center; vertical-align: center;">
+            <span id="txtInGameFt" style="font-size: 7.5vh; top: 1.75vh; position: relative; -webkit-text-stroke: 0.5vh black; color: white; font-family: bdcartoon;">
             </p>
         </div>
     </div>
 
+    <div id="divLoadingOverlay" class="stateOverlay">
+        <div style="width:50%; height:10vh; position: fixed; top: 45%; left: 25%; border: 1vh solid white; padding: 1vh">
+            <div id="divLoadBar" style="height: 100%; width:30%; background-color: white"></div>
+        </div>
+        <p style="font-family: bdcartoon; font-size: 5vw; color: white; top: 55%; left: 37%; position: fixed;">LOADING<span id="txtLoadingDots">.</span></p>
+    </div>
+
     <canvas id="renderCanvas" touch-action="none"></canvas> <!-- touch-action="none" for best results from PEP -->
+
+
+    <script>
+        let dotCount = 1;
+        setInterval(() => {
+            dotCount++;
+            if (dotCount > 3)
+                dotCount = 1;
+            let dotStr = '';
+            for (let i = 0; i < dotCount; i++)
+                dotStr += '.';
+            $('#txtLoadingDots').text(dotStr);
+        }, 500);
+    </script>
 
    </body>
 
