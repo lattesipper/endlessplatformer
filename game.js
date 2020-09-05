@@ -21,12 +21,6 @@ window.addEventListener('DOMContentLoaded', () => {
     scene.fogColor = new BABYLON.Color3(1, 0, 0);
     scene.clearColor = new BABYLON.Color4(1, 0, 0, 1.0);
     scene.ambientColor = new BABYLON.Color3(0.1, 0.1, 0.1);
-    var loadedMb = 0;
-    var totalMb = 13.8;
-    function updateLoadedMb(mb) {
-        loadedMb += mb;
-        $('#divLoadBar').width((mb / totalMb) + '%');
-    }
     var light2 = new BABYLON.DirectionalLight("DirectionalLight", new BABYLON.Vector3(0, -1, 0), scene);
     light2.intensity = 2.0;
     light2.autoUpdateExtends = false;
@@ -43,49 +37,84 @@ window.addEventListener('DOMContentLoaded', () => {
     // Game instance
     let game;
     let t = 0;
-    class LoadFunctions {
-        static loadSound(name, sizeInMb = 0) {
+    // Observable object that fires events
+    class Observable {
+        constructor() {
+            this.subscribers = new Map();
+        }
+        onEvent(eventName, callback) {
+            if (!this.subscribers.has(eventName))
+                this.subscribers.set(eventName, new Set());
+            this.subscribers.get(eventName).add(callback);
+            return () => this.subscribers.get(eventName).delete(callback);
+        }
+        fire(eventName, ...args) {
+            if (this.subscribers.has(eventName))
+                this.subscribers.get(eventName).forEach(callback => callback(...args));
+        }
+    }
+    class ResourceLoader extends Observable {
+        constructor() {
+            super(...arguments);
+            //private static RESOURCE_PATH = 'file:///C:/Users/kjgre/Documents/GitHub/endlessplatformer/resources';
+            this.loadedBytes = 0;
+        }
+        static getInstance() {
+            return this.instance;
+        }
+        loadSound(name, sizeInBytes = 0) {
             return __awaiter(this, void 0, void 0, function* () {
                 let loadedSound;
                 yield new Promise((resolve) => {
-                    loadedSound = new BABYLON.Sound("", LoadFunctions.RESOURCE_PATH + '/sounds/' + name, scene, resolve, {
+                    loadedSound = new BABYLON.Sound("", ResourceLoader.RESOURCE_PATH + '/sounds/' + name, scene, resolve, {
                         loop: false,
                         autoplay: false,
                         volume: 0.5
                     });
                 });
-                updateLoadedMb(sizeInMb);
+                this.updateLoadedBytes(sizeInBytes);
                 return loadedSound;
             });
         }
-        static loadMesh(name, sizeInMb = 0) {
+        loadMesh(name, sizeInBytes = 0) {
             return __awaiter(this, void 0, void 0, function* () {
                 let loadedMesh;
                 yield new Promise((resolve) => {
-                    BABYLON.SceneLoader.ImportMesh("", LoadFunctions.RESOURCE_PATH + '/meshes/', name, scene, (meshes, particleSystems, skeletons) => {
+                    BABYLON.SceneLoader.ImportMesh("", ResourceLoader.RESOURCE_PATH + '/meshes/', name, scene, (meshes, particleSystems, skeletons) => {
                         loadedMesh = meshes[0];
                         resolve();
                     });
                 });
-                updateLoadedMb(sizeInMb);
+                this.updateLoadedBytes(sizeInBytes);
                 return loadedMesh;
             });
         }
-        static loadTexture(name, sizeInMb = 0) {
+        loadTexture(name, sizeInBytes = 0) {
             return __awaiter(this, void 0, void 0, function* () {
-                let loadedTexture = new BABYLON.Texture(this.RESOURCE_PATH + '/textures/' + name, scene);
+                let loadedTexture = new BABYLON.Texture(ResourceLoader.RESOURCE_PATH + '/textures/' + name, scene);
                 yield new Promise((resolve) => {
                     loadedTexture.onLoadObservable.addOnce(() => {
                         resolve();
                     });
                 });
-                updateLoadedMb(sizeInMb);
+                this.updateLoadedBytes(sizeInBytes);
                 return loadedTexture;
             });
         }
+        updateLoadedBytes(bytes) {
+            this.loadedBytes += bytes;
+            $('#divLoadBar').width(((this.loadedBytes / ResourceLoader.TOTAL_RESOURCES_SIZE_IN_BYTES) * 100) + '%');
+            if (this.loadedBytes == ResourceLoader.TOTAL_RESOURCES_SIZE_IN_BYTES) {
+                BABYLON.Texture.prototype.constructor = ((...args) => { console.assert(false, "Attempted to load resource at runtime"); });
+                BABYLON.Sound.prototype.constructor = ((...args) => { console.assert(false, "Attempted to load resource at runtime"); });
+                BABYLON.SceneLoader.ImportMesh = ((...args) => { console.assert(false, "Attempted to load resource at runtime"); });
+                this.fire('loadingComplete');
+            }
+        }
     }
-    //private static RESOURCE_PATH = 'file:///C:/Users/kjgre/Documents/GitHub/endlessplatformer/resources';
-    LoadFunctions.RESOURCE_PATH = 'https://rawcdn.githack.com/lattesipper/endlessplatformer/ca1deb6c9b2ef414866425fdcd1159bf1657cfa2/resources';
+    ResourceLoader.instance = new ResourceLoader();
+    ResourceLoader.TOTAL_RESOURCES_SIZE_IN_BYTES = 5608983;
+    ResourceLoader.RESOURCE_PATH = 'https://raw.githubusercontent.com/lattesipper/endlessplatformer/master/resources';
     class UtilityFunctions {
         static fadeSound(sound, fadeTimeInSeconds, targetVolume, easingFunction = (t) => t, onDone = () => { }) {
             let t = 0;
@@ -117,187 +146,6 @@ window.addEventListener('DOMContentLoaded', () => {
             return array;
         }
     }
-    // GUI
-    const gui = BABYLON.GUI.AdvancedDynamicTexture.CreateFullscreenUI("UI");
-    gui.idealWidth = 1080;
-    //  LOADING SCREEN
-    const loadingContainer = new BABYLON.GUI.Rectangle();
-    loadingContainer.width = 1.0;
-    loadingContainer.height = 1.0;
-    loadingContainer.thickness = 0;
-    loadingContainer.isVisible = true;
-    loadingContainer.background = "rgb(0,0,0)";
-    {
-        const loadingText = new BABYLON.GUI.TextBlock();
-        loadingText.text = "Loading";
-        loadingText.color = "white";
-        loadingText.fontSize = 100;
-        loadingContainer.addControl(loadingText);
-        let dotCount = 1;
-        setInterval(() => {
-            if (!loadingContainer.isVisible)
-                return;
-            dotCount = (dotCount + 1) % 4;
-            let dotStr = '';
-            for (let i = 0; i < dotCount; i++)
-                dotStr += '.';
-            loadingText.text = "Loading" + dotStr;
-        }, 500);
-    }
-    gui.addControl(loadingContainer);
-    //  GAME OVER SCREEN
-    const gameOverContainer = new BABYLON.GUI.Rectangle();
-    gameOverContainer.width = 1.0;
-    gameOverContainer.height = 1.0;
-    gameOverContainer.thickness = 0;
-    gameOverContainer.isVisible = false;
-    {
-        const bottomBar = new BABYLON.GUI.Rectangle();
-        bottomBar.width = 1.0;
-        bottomBar.height = 0.2;
-        bottomBar.thickness = 0;
-        bottomBar.background = "rgb(0,204,255)";
-        bottomBar.verticalAlignment = BABYLON.GUI.Control.VERTICAL_ALIGNMENT_BOTTOM;
-        gameOverContainer.addControl(bottomBar);
-        const btnMenu = BABYLON.GUI.Button.CreateSimpleButton("butb", "Menu");
-        btnMenu.horizontalAlignment = BABYLON.GUI.Control.HORIZONTAL_ALIGNMENT_RIGHT;
-        btnMenu.verticalAlignment = BABYLON.GUI.Control.VERTICAL_ALIGNMENT_BOTTOM;
-        btnMenu.width = "130px";
-        btnMenu.height = "60px";
-        btnMenu.fontSize = "50px";
-        btnMenu.color = "black";
-        btnMenu.thickness = 0;
-        btnMenu.onPointerClickObservable.add(() => {
-            game.dispose();
-            gameplayContainer.isVisible = false;
-            pauseContainer.isVisible = false;
-            menuContainer.isVisible = true;
-            gameOverContainer.isVisible = false;
-        });
-        gameOverContainer.addControl(btnMenu);
-    }
-    gui.addControl(gameOverContainer);
-    //  GAMEPLAY SCREEN
-    const gameplayContainer = new BABYLON.GUI.Rectangle();
-    gameplayContainer.width = 1.0;
-    gameplayContainer.height = 1.0;
-    gameplayContainer.thickness = 0;
-    gameplayContainer.isVisible = false;
-    {
-        const text1 = new BABYLON.GUI.TextBlock();
-        text1.text = "50ft";
-        text1.color = "black";
-        text1.fontSize = 40;
-        text1.horizontalAlignment = BABYLON.GUI.Control.HORIZONTAL_ALIGNMENT_RIGHT;
-        text1.verticalAlignment = BABYLON.GUI.Control.VERTICAL_ALIGNMENT_TOP;
-        text1.left = -25;
-        text1.top = 25;
-        text1.resizeToFit = true;
-        text1.outlineWidth = 4;
-        text1.outlineColor = 'white';
-        text1.name = 'currentheight';
-        gameplayContainer.addControl(text1);
-        const text2 = new BABYLON.GUI.TextBlock();
-        text2.text = "50ft";
-        text2.color = "black";
-        text2.fontSize = 30;
-        text2.horizontalAlignment = BABYLON.GUI.Control.HORIZONTAL_ALIGNMENT_RIGHT;
-        text2.verticalAlignment = BABYLON.GUI.Control.VERTICAL_ALIGNMENT_TOP;
-        text2.left = -25;
-        text2.top = 65;
-        text2.resizeToFit = true;
-        text2.outlineWidth = 4;
-        text2.outlineColor = 'white';
-        text2.name = 'maxheight';
-        gameplayContainer.addControl(text2);
-    }
-    gui.addControl(gameplayContainer);
-    // PAUSE SCREEN
-    const pauseContainer = new BABYLON.GUI.Rectangle();
-    pauseContainer.width = 1.0;
-    pauseContainer.height = 1.0;
-    pauseContainer.thickness = 0;
-    pauseContainer.isVisible = false;
-    {
-        const centerBox = new BABYLON.GUI.Rectangle();
-        centerBox.width = 0.5;
-        centerBox.height = 0.5;
-        centerBox.thickness = 0;
-        centerBox.background = "rgba(255,255,255,0.5)";
-        {
-            const textPaused = new BABYLON.GUI.TextBlock();
-            textPaused.text = "PAUSED";
-            textPaused.color = "black";
-            textPaused.fontSize = "60px";
-            textPaused.thickness = 0;
-            centerBox.addControl(textPaused);
-            const btnMenu = BABYLON.GUI.Button.CreateSimpleButton("but", "Menu");
-            btnMenu.horizontalAlignment = BABYLON.GUI.Control.HORIZONTAL_ALIGNMENT_RIGHT;
-            btnMenu.verticalAlignment = BABYLON.GUI.Control.VERTICAL_ALIGNMENT_BOTTOM;
-            btnMenu.left = 0.5;
-            btnMenu.width = "130px";
-            btnMenu.height = "60px";
-            btnMenu.fontSize = "50px";
-            btnMenu.color = "black";
-            btnMenu.thickness = 0;
-            btnMenu.onPointerClickObservable.add(() => {
-                game.dispose();
-                gameplayContainer.isVisible = false;
-                pauseContainer.isVisible = false;
-                menuContainer.isVisible = true;
-                gameOverContainer.isVisible = false;
-            });
-            centerBox.addControl(btnMenu);
-        }
-        pauseContainer.addControl(centerBox);
-    }
-    gui.addControl(pauseContainer);
-    // MENU SCREEN
-    const menuContainer = new BABYLON.GUI.Rectangle();
-    menuContainer.width = 1.0;
-    menuContainer.height = 1.0;
-    menuContainer.background = "rgb(0,204,255)";
-    menuContainer.thickness = 0;
-    menuContainer.isVisible = false;
-    {
-        const backgroundImg = new BABYLON.GUI.Image("but", "https://raw.githubusercontent.com/lattesipper/endlessplatformer/master/resources/images/mainmenu.png");
-        backgroundImg.width = 1.0;
-        backgroundImg.height = 1.0;
-        backgroundImg.stretch = BABYLON.GUI.Image.STRETCH_UNIFORM;
-        menuContainer.addControl(backgroundImg);
-        var btnTutorial = BABYLON.GUI.Button.CreateSimpleButton("but", "Tutorial");
-        btnTutorial.horizontalAlignment = BABYLON.GUI.Control.HORIZONTAL_ALIGNMENT_LEFT;
-        btnTutorial.verticalAlignment = BABYLON.GUI.Control.VERTICAL_ALIGNMENT_TOP;
-        btnTutorial.left = "150px";
-        btnTutorial.top = "50px";
-        btnTutorial.width = "360px";
-        btnTutorial.height = "120px";
-        btnTutorial.fontSize = "100px";
-        btnTutorial.color = "red";
-        btnTutorial.thickness = 0;
-        btnTutorial.onPointerClickObservable.add(() => {
-            alert("UNIMPLEMENTED");
-        });
-        menuContainer.addControl(btnTutorial);
-        var btnPlay = BABYLON.GUI.Button.CreateSimpleButton("but", "Play");
-        btnPlay.horizontalAlignment = BABYLON.GUI.Control.HORIZONTAL_ALIGNMENT_LEFT;
-        btnPlay.verticalAlignment = BABYLON.GUI.Control.VERTICAL_ALIGNMENT_TOP;
-        btnPlay.left = "150px";
-        btnPlay.top = "170px";
-        btnPlay.width = "230px";
-        btnPlay.height = "120px";
-        btnPlay.fontSize = "100px";
-        btnPlay.color = "red";
-        btnPlay.thickness = 0;
-        btnPlay.onPointerClickObservable.add(() => {
-            game = new Game();
-            game.start();
-            menuContainer.isVisible = false;
-            gameplayContainer.isVisible = true;
-        });
-        menuContainer.addControl(btnPlay);
-    }
-    gui.addControl(menuContainer);
     let PoolType;
     (function (PoolType) {
         PoolType[PoolType["Instances"] = 0] = "Instances";
@@ -348,9 +196,9 @@ window.addEventListener('DOMContentLoaded', () => {
             this.instances = new Array(instanceCount);
             this.poolType = poolType;
         }
-        LoadResourcesFromPath(meshName, onMeshLoad = (mesh) => { }, sizeInMb = 0) {
+        LoadResourcesFromPath(meshName, onMeshLoad = (mesh) => { }, sizeInBytes = 0) {
             return __awaiter(this, void 0, void 0, function* () {
-                this.templateMesh = yield LoadFunctions.loadMesh(meshName, sizeInMb);
+                this.templateMesh = yield ResourceLoader.getInstance().loadMesh(meshName, sizeInBytes);
                 this.templateMesh.isVisible = false;
                 this.templateMesh.receiveShadows = true;
                 switch (this.poolType) {
@@ -401,22 +249,6 @@ window.addEventListener('DOMContentLoaded', () => {
         }
         getTemplateMesh() {
             return this.templateMesh;
-        }
-    }
-    // Observable object that fires events
-    class Observable {
-        constructor() {
-            this.subscribers = new Map();
-        }
-        onEvent(eventName, callback) {
-            if (!this.subscribers.has(eventName))
-                this.subscribers.set(eventName, new Set());
-            this.subscribers.get(eventName).add(callback);
-            return () => this.subscribers.get(eventName).delete(callback);
-        }
-        fire(eventName, ...args) {
-            if (this.subscribers.has(eventName))
-                this.subscribers.get(eventName).forEach(callback => callback(...args));
         }
     }
     // Singleton input manager
@@ -486,7 +318,7 @@ window.addEventListener('DOMContentLoaded', () => {
         }
         static LoadResources() {
             return __awaiter(this, void 0, void 0, function* () {
-                GameCamera.rotateSound = yield LoadFunctions.loadSound("rotateView.wav");
+                GameCamera.rotateSound = yield ResourceLoader.getInstance().loadSound("rotateView.wav", 17250);
             });
         }
         setY(y) { this.node.position.y = y; }
@@ -558,19 +390,19 @@ window.addEventListener('DOMContentLoaded', () => {
         static LoadResources() {
             return __awaiter(this, void 0, void 0, function* () {
                 // load sounds
-                //Game.BACKGROUND_MUSIC = await LoadFunctions.loadSound("https://raw.githubusercontent.com/lattesipper/endlessplatformer/master/resources/music/dreamsofabove.mp3");
+                //Game.BACKGROUND_MUSIC = await ResourceLoader.getInstance().loadSound("https://raw.githubusercontent.com/lattesipper/endlessplatformer/master/resources/music/dreamsofabove.mp3");
                 //Game.BACKGROUND_MUSIC.loop = true;
-                Game.SOUND_PAUSE_IN = yield LoadFunctions.loadSound("pauseIn.wav");
-                Game.SOUND_PAUSE_OUT = yield LoadFunctions.loadSound("pauseOut.wav");
-                Game.SOUND_DRUMROLL_REPEAT = yield LoadFunctions.loadSound("drumroll.mp3");
-                Game.SOUND_DRUMROLL_STOP = yield LoadFunctions.loadSound("drumrollStop.mp3");
+                Game.SOUND_PAUSE_IN = yield ResourceLoader.getInstance().loadSound("pauseIn.wav", 23028);
+                Game.SOUND_PAUSE_OUT = yield ResourceLoader.getInstance().loadSound("pauseOut.wav", 22988);
+                Game.SOUND_DRUMROLL_REPEAT = yield ResourceLoader.getInstance().loadSound("drumroll.mp3", 972077);
+                Game.SOUND_DRUMROLL_STOP = yield ResourceLoader.getInstance().loadSound("drumrollStop.mp3", 25311);
                 // load lava mesh
                 const lava = BABYLON.Mesh.CreateGround("ground", 150, 150, 25, scene);
                 lava.visibility = 0.5;
                 lava.position.y = -20;
                 const lavaMaterial = new BABYLON.LavaMaterial("lava", scene);
-                lavaMaterial.noiseTexture = yield LoadFunctions.loadTexture("cloud.png"); // Set the bump texture
-                lavaMaterial.diffuseTexture = yield LoadFunctions.loadTexture("lavatile.jpg"); // Set the diffuse texture
+                lavaMaterial.noiseTexture = yield ResourceLoader.getInstance().loadTexture("cloud.png", 72018); // Set the bump texture
+                lavaMaterial.diffuseTexture = yield ResourceLoader.getInstance().loadTexture("lavatile.jpg", 457155); // Set the diffuse texture
                 lavaMaterial.speed = 0.5;
                 lavaMaterial.fogColor = new BABYLON.Color3(1, 0, 0);
                 lavaMaterial.unlit = true;
@@ -604,13 +436,13 @@ window.addEventListener('DOMContentLoaded', () => {
                         case 'p':
                             if (this.running) {
                                 //Game.BACKGROUND_MUSIC.pause();
-                                pauseContainer.isVisible = true;
+                                //pauseContainer.isVisible = true;
                                 this.running = false;
                                 Game.SOUND_PAUSE_IN.play();
                             }
                             else {
                                 //Game.BACKGROUND_MUSIC.play();
-                                pauseContainer.isVisible = false;
+                                //pauseContainer.isVisible = false;
                                 this.running = true;
                                 Game.SOUND_PAUSE_OUT.play();
                             }
@@ -660,14 +492,14 @@ window.addEventListener('DOMContentLoaded', () => {
             switch (mode) {
                 case GameMode.Playing:
                     // show only the gameplay container
-                    gameOverContainer.isVisible = false;
-                    gameplayContainer.isVisible = true;
+                    //gameOverContainer.isVisible = false;
+                    //gameplayContainer.isVisible = true;
                     break;
                 case GameMode.Spectating:
                     console.assert(this.mode == GameMode.Playing);
                     // show only the game over container
-                    gameplayContainer.isVisible = false;
-                    gameOverContainer.isVisible = true;
+                    //gameplayContainer.isVisible = false;
+                    //gameOverContainer.isVisible = true;
                     // reset camera position to the start of the level, and orientate to side
                     camera.setY(0);
                     camera.setBeta(Math.PI / 2);
@@ -1303,7 +1135,7 @@ window.addEventListener('DOMContentLoaded', () => {
             return __awaiter(this, void 0, void 0, function* () {
                 const mesh = BABYLON.MeshBuilder.CreateBox('', { width: 14, height: 2, depth: 14 }, scene);
                 const material = new BABYLON.StandardMaterial('', scene);
-                material.diffuseTexture = yield LoadFunctions.loadTexture("floorBox.png");
+                material.diffuseTexture = yield ResourceLoader.getInstance().loadTexture("floorBox.png", 7415);
                 material.freeze();
                 mesh.material = material;
                 yield this.MESH_POOL.LoadResourcesFromMesh(mesh);
@@ -1324,7 +1156,7 @@ window.addEventListener('DOMContentLoaded', () => {
             return __awaiter(this, void 0, void 0, function* () {
                 yield BoxingRingBottom.MESH_POOL.LoadResourcesFromPath('boxingringbottom.obj', (mesh) => {
                     mesh.visibility = 0.5;
-                });
+                }, 254548);
             });
         }
         getMeshPool() { return BoxingRingBottom.MESH_POOL; }
@@ -1342,7 +1174,7 @@ window.addEventListener('DOMContentLoaded', () => {
             return __awaiter(this, void 0, void 0, function* () {
                 yield BoxingRingTop.MESH_POOL.LoadResourcesFromPath('boxingringtop.obj', (mesh) => {
                     //mesh.visibility = 0.5;  
-                });
+                }, 3145633);
             });
         }
         getMeshPool() { return BoxingRingTop.MESH_POOL; }
@@ -1356,8 +1188,8 @@ window.addEventListener('DOMContentLoaded', () => {
         }
         static LoadResources() {
             return __awaiter(this, void 0, void 0, function* () {
-                Coin.SOUND_COIN = yield LoadFunctions.loadSound("coinCollect.wav");
-                yield Coin.MESH_POOL.LoadResourcesFromPath('coin.obj');
+                Coin.SOUND_COIN = yield ResourceLoader.getInstance().loadSound("coinCollect.wav", 31074);
+                yield Coin.MESH_POOL.LoadResourcesFromPath('coin.obj', () => { }, 6216);
             });
         }
         static getYRotation() { return (t / 60) * (Math.PI * 2) * this.REVS_PER_SECOND; }
@@ -1418,7 +1250,7 @@ window.addEventListener('DOMContentLoaded', () => {
         }
         static LoadResources() {
             return __awaiter(this, void 0, void 0, function* () {
-                yield FallBoxBasic.MESH_POOL.LoadResourcesFromPath('basicbox.obj');
+                yield FallBoxBasic.MESH_POOL.LoadResourcesFromPath('basicbox.obj', () => { }, 397646);
             });
         }
         getMeshPool() {
@@ -1435,7 +1267,7 @@ window.addEventListener('DOMContentLoaded', () => {
             this.setCollisionGroup(CollisionGroups.Player);
             this.setTerminalVelocity(Player.MAX_Y_SPEED);
             const particleSystem = new BABYLON.ParticleSystem("particles", 2000, scene);
-            particleSystem.particleTexture = new BABYLON.Texture("https://raw.githubusercontent.com/lattesipper/endlessplatformer/master/resources/images/flare.png", scene);
+            //particleSystem.particleTexture = new BABYLON.Texture("https://raw.githubusercontent.com/lattesipper/endlessplatformer/master/resources/images/flare.png", scene);
             particleSystem.minEmitBox = new BABYLON.Vector3(0, 0, 0); // Starting all from
             particleSystem.maxEmitBox = new BABYLON.Vector3(0, 0, 0); // To...
             particleSystem.color1 = new BABYLON.Color4(1.0, 1.0, 1.0, 1.0);
@@ -1462,11 +1294,11 @@ window.addEventListener('DOMContentLoaded', () => {
         }
         static LoadResources() {
             return __awaiter(this, void 0, void 0, function* () {
-                Player.SOUND_DAMAGE = yield LoadFunctions.loadSound("damage.wav");
-                Player.SOUND_JUMP = yield LoadFunctions.loadSound("jump.wav");
-                Player.SOUND_HIT_HEAD = yield LoadFunctions.loadSound("hitHead.wav");
-                Player.SOUND_DEATH = yield LoadFunctions.loadSound("death.wav");
-                yield Player.MESH_POOL.LoadResourcesFromPath('player.obj');
+                Player.SOUND_DAMAGE = yield ResourceLoader.getInstance().loadSound("damage.wav", 12514);
+                Player.SOUND_JUMP = yield ResourceLoader.getInstance().loadSound("jump.wav", 9928);
+                Player.SOUND_HIT_HEAD = yield ResourceLoader.getInstance().loadSound("hitHead.wav", 8418);
+                Player.SOUND_DEATH = yield ResourceLoader.getInstance().loadSound("death.wav", 138110);
+                yield Player.MESH_POOL.LoadResourcesFromPath('player.obj', () => { }, 7654);
             });
         }
         getMeshPool() { return Player.MESH_POOL; }
@@ -1694,6 +1526,14 @@ window.addEventListener('DOMContentLoaded', () => {
     Player.GRAVITY = 0.015;
     Player.MAX_Y_SPEED = 0.5;
     Player.MESH_POOL = new MeshPool(2, PoolType.Cloning);
+    ResourceLoader.getInstance().onEvent('loadingComplete', () => {
+        $('#txtLoading').hide();
+        $('#txtPlay').show();
+    });
+    $('#txtPlay').on('click', () => {
+        $('#divLoadingOverlay').hide();
+        $('#divMenuOverlay').show();
+    });
     Promise.all([
         Game.LoadResources(),
         Player.LoadResources(),
@@ -1705,7 +1545,7 @@ window.addEventListener('DOMContentLoaded', () => {
         BoxingRingBottom.LoadResources(),
         BoxingRingTop.LoadResources()
     ]).then(() => {
-        loadingContainer.isVisible = false;
-        menuContainer.isVisible = true;
+        // loadingContainer.isVisible = false;
+        // menuContainer.isVisible = true;
     });
 });
