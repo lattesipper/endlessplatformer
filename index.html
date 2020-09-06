@@ -18,10 +18,11 @@
                 -khtml-user-select: none; /* Konqueror HTML */
                 -moz-user-select: none; /* Firefox */
                 -ms-user-select: none; /* Internet Explorer/Edge */
+                background-color: rgb(0, 204, 255);
             }
 
             .stateOverlay {
-                width:100%; height:100%; position: fixed;
+                width:100%; height:100%; display: flex; background-color: white;
             }
 
             #divMenuOverlay {
@@ -39,10 +40,12 @@
             }
 
             #txtPlay {
-                font-size: 5vw !important;
+                font-size: 10vh !important;
+                color: black !important;
             }
             #txtPlay:hover {
-                font-size: 6vw !important;
+                font-size: 10vh !important;
+                color: darkgrey !important;
             }
 
             @font-face {
@@ -61,25 +64,34 @@
     </head>
 
    <body>
-    <div id="divLoadingOverlay" class="stateOverlay">
-        <div style="width:50%; height:10vh; position: fixed; top: 45%; left: 25%; border: 1vh solid black; padding: 1vh; position: relative;">
-            <div id="divLoadBar" style="height: 100%; width:0%; background-color: black;"></div>
+
+    <div style="width: 100%; height: 100%">
+        <div style="height:100%; width: 150.278884462vh; margin-left: auto; margin-right: auto; position: relative; overflow: hidden;">
+            <div id="divLoadingOverlay" class="stateOverlay">
+                <div id="divLoad" style="width:50%; height:10vh; position: absolute; top: 45%; left: 25%; border: 1vh solid black; padding: 1vh; position: relative;">
+                    <div id="divLoadBar" style="height: 100%; width:0%; background-color: black;"></div>
+                </div>
+                <div id="txtPlay" style="font-family: bdcartoon; color: black; top: 65%; width: 100%; text-align: center; position: absolute; display: none;">PLAY</div>
+                <div id="txtLoading" style="font-family: bdcartoon; font-size: 10vh; color: black; top: 65%; left: 33%; position: absolute;">LOADING<span id="txtLoadingDots">.</span></div>
+            </div>
+            <div id="divLogoOverlay" class="stateOverlay">
+                <img id="imgCompanyLogo" src='https://assets.kogan.com/images/latestbuy/LST-38609/1-7d93145ff3-ic3aljq01-1000a.jpg' style="width:30%; height:30%; top: 35%; left: -20%; position: relative;">
+            </div>
+        
+            <div id="divMenuOverlay" class="stateOverlay" style="display: none;">
+        
+            </div>
+            <div id="divInGameOverlay" class="stateOverlay" style="display: none;">
+                <div style="width:20%; left:40%; height: 10vh; position: absolute; background-color: rgba(255, 0, 0, 0.5); text-align: center; vertical-align: center;">
+                    <span id="txtInGameFt" style="font-size: 7.5vh; top: 1.75vh; position: relative; -webkit-text-stroke: 0.5vh black; color: white; font-family: bdcartoon;">
+                    </p>
+                </div>
+            </div>
+        
+            <canvas id="renderCanvas" touch-action="none"></canvas> <!-- touch-action="none" for best results from PEP -->
         </div>
-        <div id="txtPlay" style="font-family: bdcartoon; color: black; top: 65%; width: 100%; text-align: center; position: fixed; display: none;">PLAY</div>
-        <div id="txtLoading" style="font-family: bdcartoon; font-size: 5vw; color: black; top: 65%; left: 37%; position: fixed;">LOADING<span id="txtLoadingDots">.</span></div>
     </div>
 
-    <div id="divMenuOverlay" class="stateOverlay" style="display: none;">
-
-    </div>
-    <div id="divInGameOverlay" class="stateOverlay" style="display: none;">
-        <div style="width:20vw; left:40vw; height: 10vh; position: absolute; background-color: rgba(255, 0, 0, 0.5); text-align: center; vertical-align: center;">
-            <span id="txtInGameFt" style="font-size: 7.5vh; top: 1.75vh; position: relative; -webkit-text-stroke: 0.5vh black; color: white; font-family: bdcartoon;">
-            </p>
-        </div>
-    </div>
-
-    <canvas id="renderCanvas" touch-action="none"></canvas> <!-- touch-action="none" for best results from PEP -->
 
 
     <script>

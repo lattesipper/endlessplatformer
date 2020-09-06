@@ -50,6 +50,92 @@ class Observable {
     private subscribers : Map<string, Set<CallableFunction>> = new Map();
 }
 
+interface AnimationOptions {
+    elementSelector: string;
+    property: string;
+    transitionFunction?: any;
+    startValue?: number;
+    endValue?: number;
+    timeInSeconds: number;
+    onDone?: any;
+    loops?: boolean;
+}
+class Animation {
+    public static playInSequence(animations: Array<Animation>) {
+        animations.forEach((val, idx) => { if (idx < animations.length - 1) val.setNextInChain(animations[idx+1]) });
+        animations[0].start();
+    }
+    public static playTogether(animations: Array<Animation>) {
+        animations.forEach((val) => { val.start(); });
+    }
+    public constructor(animationOptions: AnimationOptions) {
+        console.assert(Animation.VALID_PROPERTIES.some(validProperty => animationOptions.property == validProperty));
+        this.animationOptions = animationOptions;
+    }
+
+    public isRunning() : boolean { return this.running; }
+    public start() { 
+        console.assert(!this.running && !this.finished); 
+        const animationOptions = this.animationOptions;
+        this.onDoneFunction = animationOptions.onDone;
+        this.element = $(animationOptions.elementSelector)[0];
+        this.running = true; 
+        animationOptions.transitionFunction = (animationOptions.transitionFunction ?? Animation.TRANSITION_LINEAR);
+        animationOptions.startValue = (animationOptions.startValue ?? parseFloat(this.element.style[animationOptions.property].replace('%', '')));
+        animationOptions.endValue = (animationOptions.endValue ?? animationOptions.startValue)
+        this.intervalFunction = setInterval(() => {
+            if (!this.running)
+                return;
+            this.t += Animation.T_DELTA;
+            let clampedValue = Math.min(this.t / animationOptions.timeInSeconds, 1);
+            this.element.style[animationOptions.property] = animationOptions.transitionFunction(clampedValue, animationOptions.startValue, animationOptions.endValue) + '%';
+            if (clampedValue == 1) {
+                if (!animationOptions.loops) {
+                    this.complete();
+                } else {
+                    this.t = 0;
+                }
+            }
+        }, Animation.T_DELTA * 1000);
+
+        if (Animation.ELEMENTS_PLAYING.has(this.element)) {
+            Animation.ELEMENTS_PLAYING.get(this.element).complete(true);
+        }
+        Animation.ELEMENTS_PLAYING.set(this.element, this);
+    }
+    public pause() { console.assert(this.running && !this.finished); this.running = false; }
+    public isFinished() : boolean { return this.finished; }
+    
+    private complete(skipping: boolean = false) {
+        console.assert(!this.finished);
+        clearInterval(this.intervalFunction);
+        Animation.ELEMENTS_PLAYING.delete(this.element);
+        if (this.onDoneFunction && !skipping) this.onDoneFunction();
+        this.finished = true;
+        this.running = false;
+        if (this.nextAnimationInChain)
+            this.nextAnimationInChain.start();
+    }
+    public setNextInChain(animation: Animation) { this.nextAnimationInChain = animation; }
+
+    public static TRANSITION_LINEAR = (t, start, end) => start + (end - start) * t;
+    public static TRANSITION_SIN = (t, start, end) => start + Math.sin(t * (Math.PI / 2)) * (end - start);
+
+    private static VALID_PROPERTIES: Array<string> = ['left', 'right', 'top', 'bottom', 'height', 'width'];
+    private static T_DELTA: number = (1/60);
+    private static ELEMENTS_PLAYING: Map<HTMLElement, Animation> = new Map();
+
+    private animationOptions: AnimationOptions;
+
+    private element: HTMLElement;
+    private t: number = 0;
+    private running: boolean = false;
+    private finished: boolean = false;
+    private intervalFunction: any;
+    private onDoneFunction: any;
+    private nextAnimationInChain: Animation;
+}
+
 class ResourceLoader extends Observable{
     public static getInstance() {
         return this.instance;
@@ -89,13 +175,19 @@ class ResourceLoader extends Observable{
     }
     private updateLoadedBytes(bytes) {
         this.loadedBytes += bytes;
-        $('#divLoadBar').width(((this.loadedBytes / ResourceLoader.TOTAL_RESOURCES_SIZE_IN_BYTES) * 100) + '%');
-        if (this.loadedBytes == ResourceLoader.TOTAL_RESOURCES_SIZE_IN_BYTES) {
-            BABYLON.Texture.prototype.constructor = ((...args): any => { console.assert(false, "Attempted to load resource at runtime"); });
-            BABYLON.Sound.prototype.constructor = ((...args): any => { console.assert(false, "Attempted to load resource at runtime"); });
-            BABYLON.SceneLoader.ImportMesh = ((...args): any => { console.assert(false, "Attempted to load resource at runtime"); });
-            this.fire('loadingComplete');
-        }
+        new Animation({
+            elementSelector: '#divLoadBar', property: 'width', endValue: ((this.loadedBytes / ResourceLoader.TOTAL_RESOURCES_SIZE_IN_BYTES) * 100), timeInSeconds: 0.5,
+            onDone: (() => {
+                if (this.loadedBytes == ResourceLoader.TOTAL_RESOURCES_SIZE_IN_BYTES)
+                    this.mangleLoaders();
+            })
+        }).start();
+    }
+    private mangleLoaders() {
+        BABYLON.Texture.prototype.constructor = ((...args): any => { console.assert(false, "Attempted to load resource at runtime"); });
+        BABYLON.Sound.prototype.constructor = ((...args): any => { console.assert(false, "Attempted to load resource at runtime"); });
+        BABYLON.SceneLoader.ImportMesh = ((...args): any => { console.assert(false, "Attempted to load resource at runtime"); });
+        this.fire('loadingComplete');
     }
     //private static RESOURCE_PATH = 'file:///C:/Users/kjgre/Documents/GitHub/endlessplatformer/resources';
     private loadedBytes: number = 0;
@@ -1552,7 +1644,13 @@ ResourceLoader.getInstance().onEvent('loadingComplete', () => {
 
 $('#txtPlay').on('click', () => {
     $('#divLoadingOverlay').hide();
-    $('#divMenuOverlay').show();
+    $('#divLogoOverlay').show();
+
+    Animation.playInSequence([
+        new Animation({elementSelector: '#imgCompanyLogo', property: 'left', transitionFunction: Animation.TRANSITION_SIN, endValue: 35, timeInSeconds: 0.5}),
+        new Animation({elementSelector: '#imgCompanyLogo', property: 'left', timeInSeconds: 2}),
+        new Animation({elementSelector: '#imgCompanyLogo', property: 'left', transitionFunction: Animation.TRANSITION_SIN, endValue: 130, timeInSeconds: 0.5}),
+    ]);
 });
 
 Promise.all([

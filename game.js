@@ -53,6 +53,73 @@ window.addEventListener('DOMContentLoaded', () => {
                 this.subscribers.get(eventName).forEach(callback => callback(...args));
         }
     }
+    class Animation {
+        constructor(animationOptions) {
+            this.t = 0;
+            this.running = false;
+            this.finished = false;
+            console.assert(Animation.VALID_PROPERTIES.some(validProperty => animationOptions.property == validProperty));
+            this.animationOptions = animationOptions;
+        }
+        static playInSequence(animations) {
+            animations.forEach((val, idx) => { if (idx < animations.length - 1)
+                val.setNextInChain(animations[idx + 1]); });
+            animations[0].start();
+        }
+        static playTogether(animations) {
+            animations.forEach((val) => { val.start(); });
+        }
+        isRunning() { return this.running; }
+        start() {
+            var _a, _b, _c;
+            console.assert(!this.running && !this.finished);
+            const animationOptions = this.animationOptions;
+            this.onDoneFunction = animationOptions.onDone;
+            this.element = $(animationOptions.elementSelector)[0];
+            this.running = true;
+            animationOptions.transitionFunction = ((_a = animationOptions.transitionFunction) !== null && _a !== void 0 ? _a : Animation.TRANSITION_LINEAR);
+            animationOptions.startValue = ((_b = animationOptions.startValue) !== null && _b !== void 0 ? _b : parseFloat(this.element.style[animationOptions.property].replace('%', '')));
+            animationOptions.endValue = ((_c = animationOptions.endValue) !== null && _c !== void 0 ? _c : animationOptions.startValue);
+            this.intervalFunction = setInterval(() => {
+                if (!this.running)
+                    return;
+                this.t += Animation.T_DELTA;
+                let clampedValue = Math.min(this.t / animationOptions.timeInSeconds, 1);
+                this.element.style[animationOptions.property] = animationOptions.transitionFunction(clampedValue, animationOptions.startValue, animationOptions.endValue) + '%';
+                if (clampedValue == 1) {
+                    if (!animationOptions.loops) {
+                        this.complete();
+                    }
+                    else {
+                        this.t = 0;
+                    }
+                }
+            }, Animation.T_DELTA * 1000);
+            if (Animation.ELEMENTS_PLAYING.has(this.element)) {
+                Animation.ELEMENTS_PLAYING.get(this.element).complete(true);
+            }
+            Animation.ELEMENTS_PLAYING.set(this.element, this);
+        }
+        pause() { console.assert(this.running && !this.finished); this.running = false; }
+        isFinished() { return this.finished; }
+        complete(skipping = false) {
+            console.assert(!this.finished);
+            clearInterval(this.intervalFunction);
+            Animation.ELEMENTS_PLAYING.delete(this.element);
+            if (this.onDoneFunction && !skipping)
+                this.onDoneFunction();
+            this.finished = true;
+            this.running = false;
+            if (this.nextAnimationInChain)
+                this.nextAnimationInChain.start();
+        }
+        setNextInChain(animation) { this.nextAnimationInChain = animation; }
+    }
+    Animation.TRANSITION_LINEAR = (t, start, end) => start + (end - start) * t;
+    Animation.TRANSITION_SIN = (t, start, end) => start + Math.sin(t * (Math.PI / 2)) * (end - start);
+    Animation.VALID_PROPERTIES = ['left', 'right', 'top', 'bottom', 'height', 'width'];
+    Animation.T_DELTA = (1 / 60);
+    Animation.ELEMENTS_PLAYING = new Map();
     class ResourceLoader extends Observable {
         constructor() {
             super(...arguments);
@@ -103,13 +170,19 @@ window.addEventListener('DOMContentLoaded', () => {
         }
         updateLoadedBytes(bytes) {
             this.loadedBytes += bytes;
-            $('#divLoadBar').width(((this.loadedBytes / ResourceLoader.TOTAL_RESOURCES_SIZE_IN_BYTES) * 100) + '%');
-            if (this.loadedBytes == ResourceLoader.TOTAL_RESOURCES_SIZE_IN_BYTES) {
-                BABYLON.Texture.prototype.constructor = ((...args) => { console.assert(false, "Attempted to load resource at runtime"); });
-                BABYLON.Sound.prototype.constructor = ((...args) => { console.assert(false, "Attempted to load resource at runtime"); });
-                BABYLON.SceneLoader.ImportMesh = ((...args) => { console.assert(false, "Attempted to load resource at runtime"); });
-                this.fire('loadingComplete');
-            }
+            new Animation({
+                elementSelector: '#divLoadBar', property: 'width', endValue: ((this.loadedBytes / ResourceLoader.TOTAL_RESOURCES_SIZE_IN_BYTES) * 100), timeInSeconds: 0.5,
+                onDone: (() => {
+                    if (this.loadedBytes == ResourceLoader.TOTAL_RESOURCES_SIZE_IN_BYTES)
+                        this.mangleLoaders();
+                })
+            }).start();
+        }
+        mangleLoaders() {
+            BABYLON.Texture.prototype.constructor = ((...args) => { console.assert(false, "Attempted to load resource at runtime"); });
+            BABYLON.Sound.prototype.constructor = ((...args) => { console.assert(false, "Attempted to load resource at runtime"); });
+            BABYLON.SceneLoader.ImportMesh = ((...args) => { console.assert(false, "Attempted to load resource at runtime"); });
+            this.fire('loadingComplete');
         }
     }
     ResourceLoader.instance = new ResourceLoader();
@@ -1532,7 +1605,12 @@ window.addEventListener('DOMContentLoaded', () => {
     });
     $('#txtPlay').on('click', () => {
         $('#divLoadingOverlay').hide();
-        $('#divMenuOverlay').show();
+        $('#divLogoOverlay').show();
+        Animation.playInSequence([
+            new Animation({ elementSelector: '#imgCompanyLogo', property: 'left', transitionFunction: Animation.TRANSITION_SIN, endValue: 35, timeInSeconds: 0.5 }),
+            new Animation({ elementSelector: '#imgCompanyLogo', property: 'left', timeInSeconds: 2 }),
+            new Animation({ elementSelector: '#imgCompanyLogo', property: 'left', transitionFunction: Animation.TRANSITION_SIN, endValue: 130, timeInSeconds: 0.5 }),
+        ]);
     });
     Promise.all([
         Game.LoadResources(),
