@@ -85,6 +85,14 @@ class ResourceLoader extends Observable{
         this.updateLoadedBytes(sizeInBytes);
         return loadedTexture;
     }
+    public async loadImageIntoContainer(selector: string, name: string, sizeInBytes: number = 0) : Promise<any> {
+        const logo = <HTMLImageElement>document.getElementById(selector);
+        logo.src = name;
+        await new Promise((resolve) => {
+            logo.onload = (() => resolve());
+        });
+        this.updateLoadedBytes(sizeInBytes);
+    }
     private updateLoadedBytes(bytes) {
         this.animationBarPercentages.push((bytes / ResourceLoader.TOTAL_RESOURCES_SIZE_IN_BYTES) * 100);
         if (!this.isAnimating)
@@ -1572,6 +1580,9 @@ class Player extends PhysBox {
 enum GUIState {Load, Logo, MainMenu, Ingame}
 class GUIManager {
     public static getInstance() : GUIManager { return this.instance; }
+    public static async LoadResources() {
+        await ResourceLoader.getInstance().loadImageIntoContainer('test', 'https://raw.githubusercontent.com/lattesipper/endlessplatformer/master/resources/guitextures/tmpbackground.png', 0);
+    }
     public pushState(newState: GUIState) {
         console.assert(!this.currentStates.some(currentState => currentState == newState));
         this.currentStates.push(newState);
@@ -1608,9 +1619,15 @@ class GUIManager {
                     complete: (anim) => { this.replaceState(GUIState.MainMenu); }
                 });
                 break;
+            case GUIState.Ingame:
+                game = new Game();
+                game.start();
+                break;
             default:
                 break;
         }
+        window.dispatchEvent(new Event('resize'));
+
     }
     public popState() {
         const topState = this.currentStates.pop();
@@ -1618,6 +1635,9 @@ class GUIManager {
         switch(topState) {
             case GUIState.Load:
                 clearInterval(this.loadingDotInterval); this.loadingDotInterval = null;
+                break;
+            case GUIState.Ingame:
+                game.dispose();
                 break;
             default:
                 break;
@@ -1630,6 +1650,9 @@ class GUIManager {
     }
     public constructor() {
         $('#txtPlay').on('click', () => { this.replaceState(GUIState.Logo); });
+        $('#txtTutorial').on('click', () => { alert("UNIMPLEMENTED"); });
+        $('#txtPlayGame').on('click', () => { this.replaceState(GUIState.Ingame); });
+        $('#txtAbout').on('click', () => { alert("UNIMPLEMENTED"); });
     }
     private overlayDivs : Map<GUIState, any> = new Map([ 
         [GUIState.Load,$('#divLoadingOverlay')], 
@@ -1645,6 +1668,7 @@ class GUIManager {
 }
 
 Promise.all([
+    GUIManager.LoadResources(),
     Game.LoadResources(),
     Player.LoadResources(),
     GameCamera.LoadResources(),
@@ -1653,7 +1677,7 @@ Promise.all([
    // Boulder.LoadResouces(),
     Coin.LoadResources(),
     BoxingRingBottom.LoadResources(),
-    BoxingRingTop.LoadResources()
+    BoxingRingTop.LoadResources(),
 ]).then(() => {
     // loadingContainer.isVisible = false;
     // menuContainer.isVisible = true;

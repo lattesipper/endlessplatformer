@@ -100,6 +100,16 @@ window.addEventListener('DOMContentLoaded', () => {
                 return loadedTexture;
             });
         }
+        loadImageIntoContainer(selector, name, sizeInBytes = 0) {
+            return __awaiter(this, void 0, void 0, function* () {
+                const logo = document.getElementById(selector);
+                logo.src = name;
+                yield new Promise((resolve) => {
+                    logo.onload = (() => resolve());
+                });
+                this.updateLoadedBytes(sizeInBytes);
+            });
+        }
         updateLoadedBytes(bytes) {
             this.animationBarPercentages.push((bytes / ResourceLoader.TOTAL_RESOURCES_SIZE_IN_BYTES) * 100);
             if (!this.isAnimating)
@@ -1565,8 +1575,16 @@ window.addEventListener('DOMContentLoaded', () => {
             ]);
             this.currentStates = [GUIState.Load];
             $('#txtPlay').on('click', () => { this.replaceState(GUIState.Logo); });
+            $('#txtTutorial').on('click', () => { alert("UNIMPLEMENTED"); });
+            $('#txtPlayGame').on('click', () => { this.replaceState(GUIState.Ingame); });
+            $('#txtAbout').on('click', () => { alert("UNIMPLEMENTED"); });
         }
         static getInstance() { return this.instance; }
+        static LoadResources() {
+            return __awaiter(this, void 0, void 0, function* () {
+                yield ResourceLoader.getInstance().loadImageIntoContainer('test', 'https://raw.githubusercontent.com/lattesipper/endlessplatformer/master/resources/guitextures/tmpbackground.png', 0);
+            });
+        }
         pushState(newState) {
             console.assert(!this.currentStates.some(currentState => currentState == newState));
             this.currentStates.push(newState);
@@ -1603,9 +1621,14 @@ window.addEventListener('DOMContentLoaded', () => {
                         complete: (anim) => { this.replaceState(GUIState.MainMenu); }
                     });
                     break;
+                case GUIState.Ingame:
+                    game = new Game();
+                    game.start();
+                    break;
                 default:
                     break;
             }
+            window.dispatchEvent(new Event('resize'));
         }
         popState() {
             const topState = this.currentStates.pop();
@@ -1614,6 +1637,9 @@ window.addEventListener('DOMContentLoaded', () => {
                 case GUIState.Load:
                     clearInterval(this.loadingDotInterval);
                     this.loadingDotInterval = null;
+                    break;
+                case GUIState.Ingame:
+                    game.dispose();
                     break;
                 default:
                     break;
@@ -1627,6 +1653,7 @@ window.addEventListener('DOMContentLoaded', () => {
     }
     GUIManager.instance = new GUIManager();
     Promise.all([
+        GUIManager.LoadResources(),
         Game.LoadResources(),
         Player.LoadResources(),
         GameCamera.LoadResources(),
@@ -1635,7 +1662,7 @@ window.addEventListener('DOMContentLoaded', () => {
         // Boulder.LoadResouces(),
         Coin.LoadResources(),
         BoxingRingBottom.LoadResources(),
-        BoxingRingTop.LoadResources()
+        BoxingRingTop.LoadResources(),
     ]).then(() => {
         // loadingContainer.isVisible = false;
         // menuContainer.isVisible = true;
