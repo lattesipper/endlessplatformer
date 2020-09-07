@@ -7,7 +7,7 @@ var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, ge
         step((generator = generator.apply(thisArg, _arguments || [])).next());
     });
 };
-//import * as BABYLON from 'babylonjs';
+import * as BABYLON from 'babylonjs';
 window.addEventListener('DOMContentLoaded', () => {
     // Create canvas and engine.
     const canvas = (document.getElementById('renderCanvas'));
@@ -53,82 +53,14 @@ window.addEventListener('DOMContentLoaded', () => {
                 this.subscribers.get(eventName).forEach(callback => callback(...args));
         }
     }
-    class Animation {
-        constructor(animationOptions) {
-            this.t = 0;
-            this.running = false;
-            this.finished = false;
-            console.assert(Animation.VALID_PROPERTIES.some(validProperty => animationOptions.property == validProperty));
-            this.animationOptions = animationOptions;
-        }
-        static playInSequence(animations) {
-            animations.forEach((val, idx) => { if (idx < animations.length - 1)
-                val.setNextInChain(animations[idx + 1]); });
-            animations[0].start();
-        }
-        static playTogether(animations) {
-            animations.forEach((val) => { val.start(); });
-        }
-        isRunning() { return this.running; }
-        start() {
-            var _a, _b, _c;
-            console.assert(!this.running && !this.finished);
-            const animationOptions = this.animationOptions;
-            this.onDoneFunction = animationOptions.onDone;
-            this.element = $(animationOptions.elementSelector)[0];
-            this.running = true;
-            animationOptions.transitionFunction = ((_a = animationOptions.transitionFunction) !== null && _a !== void 0 ? _a : Animation.TRANSITION_LINEAR);
-            animationOptions.startValue = ((_b = animationOptions.startValue) !== null && _b !== void 0 ? _b : parseFloat(this.element.style[animationOptions.property].replace('%', '')));
-            animationOptions.endValue = ((_c = animationOptions.endValue) !== null && _c !== void 0 ? _c : animationOptions.startValue);
-            this.intervalFunction = setInterval(() => {
-                if (!this.running)
-                    return;
-                this.t += Animation.T_DELTA;
-                let clampedValue = Math.min(this.t / animationOptions.timeInSeconds, 1);
-                this.element.style[animationOptions.property] = animationOptions.transitionFunction(clampedValue, animationOptions.startValue, animationOptions.endValue) + '%';
-                if (clampedValue == 1) {
-                    if (!animationOptions.loops) {
-                        this.complete();
-                    }
-                    else {
-                        this.t = 0;
-                    }
-                }
-            }, Animation.T_DELTA * 1000);
-            if (Animation.ELEMENTS_PLAYING.has(this.element)) {
-                Animation.ELEMENTS_PLAYING.get(this.element).complete(true);
-            }
-            Animation.ELEMENTS_PLAYING.set(this.element, this);
-        }
-        pause() { console.assert(this.running && !this.finished); this.running = false; }
-        isFinished() { return this.finished; }
-        complete(skipping = false) {
-            console.assert(!this.finished);
-            clearInterval(this.intervalFunction);
-            Animation.ELEMENTS_PLAYING.delete(this.element);
-            if (this.onDoneFunction && !skipping)
-                this.onDoneFunction();
-            this.finished = true;
-            this.running = false;
-            if (this.nextAnimationInChain)
-                this.nextAnimationInChain.start();
-        }
-        setNextInChain(animation) { this.nextAnimationInChain = animation; }
-    }
-    Animation.TRANSITION_LINEAR = (t, start, end) => start + (end - start) * t;
-    Animation.TRANSITION_SIN = (t, start, end) => start + Math.sin(t * (Math.PI / 2)) * (end - start);
-    Animation.VALID_PROPERTIES = ['left', 'right', 'top', 'bottom', 'height', 'width'];
-    Animation.T_DELTA = (1 / 60);
-    Animation.ELEMENTS_PLAYING = new Map();
     class ResourceLoader extends Observable {
         constructor() {
             super(...arguments);
-            //private static RESOURCE_PATH = 'file:///C:/Users/kjgre/Documents/GitHub/endlessplatformer/resources';
-            this.loadedBytes = 0;
+            // loading bar animation properties
+            this.animationBarPercentages = [];
+            this.isAnimating = false;
         }
-        static getInstance() {
-            return this.instance;
-        }
+        static getInstance() { return this.instance; }
         loadSound(name, sizeInBytes = 0) {
             return __awaiter(this, void 0, void 0, function* () {
                 let loadedSound;
@@ -169,16 +101,32 @@ window.addEventListener('DOMContentLoaded', () => {
             });
         }
         updateLoadedBytes(bytes) {
-            this.loadedBytes += bytes;
-            new Animation({
-                elementSelector: '#divLoadBar', property: 'width', endValue: ((this.loadedBytes / ResourceLoader.TOTAL_RESOURCES_SIZE_IN_BYTES) * 100), timeInSeconds: 0.5,
-                onDone: (() => {
-                    if (this.loadedBytes == ResourceLoader.TOTAL_RESOURCES_SIZE_IN_BYTES)
-                        this.mangleLoaders();
-                })
-            }).start();
+            this.animationBarPercentages.push((bytes / ResourceLoader.TOTAL_RESOURCES_SIZE_IN_BYTES) * 100);
+            if (!this.isAnimating)
+                this.updatePendingAnimations();
         }
-        mangleLoaders() {
+        updatePendingAnimations() {
+            if (this.animationBarPercentages.length) {
+                const barPToAdd = this.animationBarPercentages.shift();
+                this.isAnimating = true;
+                anime({
+                    targets: '#divLoadBar',
+                    width: {
+                        value: '+=' + barPToAdd + '%',
+                        duration: (barPToAdd / 100) * 1000,
+                        easing: 'linear'
+                    },
+                    complete: (anim) => {
+                        if ($('#divLoadBar')[0].style['width'] == '100%') {
+                            this.finishLoading();
+                        }
+                        this.isAnimating = false;
+                        this.updatePendingAnimations();
+                    }
+                });
+            }
+        }
+        finishLoading() {
             BABYLON.Texture.prototype.constructor = ((...args) => { console.assert(false, "Attempted to load resource at runtime"); });
             BABYLON.Sound.prototype.constructor = ((...args) => { console.assert(false, "Attempted to load resource at runtime"); });
             BABYLON.SceneLoader.ImportMesh = ((...args) => { console.assert(false, "Attempted to load resource at runtime"); });
@@ -1606,11 +1554,20 @@ window.addEventListener('DOMContentLoaded', () => {
     $('#txtPlay').on('click', () => {
         $('#divLoadingOverlay').hide();
         $('#divLogoOverlay').show();
-        Animation.playInSequence([
-            new Animation({ elementSelector: '#imgCompanyLogo', property: 'left', transitionFunction: Animation.TRANSITION_SIN, endValue: 35, timeInSeconds: 0.5 }),
-            new Animation({ elementSelector: '#imgCompanyLogo', property: 'left', timeInSeconds: 2 }),
-            new Animation({ elementSelector: '#imgCompanyLogo', property: 'left', transitionFunction: Animation.TRANSITION_SIN, endValue: 130, timeInSeconds: 0.5 }),
-        ]);
+        var tl = anime.timeline({
+            easing: 'easeOutExpo',
+            duration: 750
+        });
+        tl
+            .add({
+            targets: '#imgCompanyLogo',
+            left: '35%'
+        })
+            .add({
+            targets: '#imgCompanyLogo',
+            left: '130%',
+            delay: 2000,
+        });
     });
     Promise.all([
         Game.LoadResources(),
