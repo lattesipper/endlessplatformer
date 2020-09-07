@@ -130,7 +130,8 @@ window.addEventListener('DOMContentLoaded', () => {
             BABYLON.Texture.prototype.constructor = ((...args) => { console.assert(false, "Attempted to load resource at runtime"); });
             BABYLON.Sound.prototype.constructor = ((...args) => { console.assert(false, "Attempted to load resource at runtime"); });
             BABYLON.SceneLoader.ImportMesh = ((...args) => { console.assert(false, "Attempted to load resource at runtime"); });
-            this.fire('loadingComplete');
+            $('#txtLoading').hide();
+            $('#txtPlay').show();
         }
     }
     ResourceLoader.instance = new ResourceLoader();
@@ -1547,28 +1548,68 @@ window.addEventListener('DOMContentLoaded', () => {
     Player.GRAVITY = 0.015;
     Player.MAX_Y_SPEED = 0.5;
     Player.MESH_POOL = new MeshPool(2, PoolType.Cloning);
-    ResourceLoader.getInstance().onEvent('loadingComplete', () => {
-        $('#txtLoading').hide();
-        $('#txtPlay').show();
-    });
-    $('#txtPlay').on('click', () => {
-        $('#divLoadingOverlay').hide();
-        $('#divLogoOverlay').show();
-        var tl = anime.timeline({
-            easing: 'easeOutExpo',
-            duration: 750
-        });
-        tl
-            .add({
-            targets: '#imgCompanyLogo',
-            left: '35%'
-        })
-            .add({
-            targets: '#imgCompanyLogo',
-            left: '100%',
-            delay: 2000,
-        });
-    });
+    let GUIState;
+    (function (GUIState) {
+        GUIState[GUIState["Load"] = 0] = "Load";
+        GUIState[GUIState["Logo"] = 1] = "Logo";
+        GUIState[GUIState["MainMenu"] = 2] = "MainMenu";
+        GUIState[GUIState["Ingame"] = 3] = "Ingame";
+    })(GUIState || (GUIState = {}));
+    class GUIManager {
+        constructor() {
+            this.overlayDivs = new Map([
+                [GUIState.Load, $('#divLoadingOverlay')],
+                [GUIState.Logo, $('#divLogoOverlay')],
+                [GUIState.MainMenu, $('#divMenuOverlay')],
+                [GUIState.Ingame, $('#divInGameOverlay')]
+            ]);
+            this.currentStates = [GUIState.Load];
+            $('#txtPlay').on('click', () => { this.replaceState(GUIState.Logo); });
+        }
+        static getInstance() { return this.instance; }
+        pushState(newState) {
+            console.assert(!this.currentStates.some(currentState => currentState == newState));
+            this.currentStates.push(newState);
+            this.overlayDivs.get(newState)
+                .css('z-index', this.currentStates.length + '')
+                .show();
+            switch (newState) {
+                case GUIState.Logo:
+                    var tl = anime.timeline({
+                        easing: 'easeOutExpo',
+                        duration: 750
+                    });
+                    tl
+                        .add({
+                        targets: '#imgCompanyLogo',
+                        left: '35%'
+                    })
+                        .add({
+                        targets: '#imgCompanyLogo',
+                        left: '100%',
+                        delay: 2000,
+                        complete: (anim) => { this.replaceState(GUIState.MainMenu); }
+                    });
+                    break;
+                default:
+                    break;
+            }
+        }
+        popState() {
+            const topState = this.currentStates.pop();
+            this.overlayDivs.get(topState).hide();
+            switch (topState) {
+                default:
+                    break;
+            }
+        }
+        replaceState(newState) {
+            if (this.currentStates.length)
+                this.popState();
+            this.pushState(newState);
+        }
+    }
+    GUIManager.instance = new GUIManager();
     Promise.all([
         Game.LoadResources(),
         Player.LoadResources(),
