@@ -95,21 +95,5 @@
         </div>
     </div>
 
-
-
-    <script>
-        let dotCount = 1;
-        setInterval(() => {
-            dotCount++;
-            if (dotCount > 3)
-                dotCount = 1;
-            let dotStr = '';
-            for (let i = 0; i < dotCount; i++)
-                dotStr += '.';
-            $('#txtLoadingDots').text(dotStr);
-        }, 500);
-    </script>
-
    </body>
-
 </html>

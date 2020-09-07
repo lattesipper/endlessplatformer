@@ -1579,6 +1579,18 @@ class GUIManager {
             .css('z-index', this.currentStates.length + '')
             .show();
         switch(newState) {
+            case GUIState.Load:
+                let dotCount = 1;
+                this.loadingDotInterval = setInterval(() => {
+                    dotCount++;
+                    if (dotCount > 3)
+                        dotCount = 1;
+                    let dotStr = '';
+                    for (let i = 0; i < dotCount; i++)
+                        dotStr += '.';
+                    $('#txtLoadingDots').text(dotStr);
+                }, 500);
+                break;
             case GUIState.Logo:
                 var tl = anime.timeline({
                     easing: 'easeOutExpo',
@@ -1604,6 +1616,9 @@ class GUIManager {
         const topState = this.currentStates.pop();
         this.overlayDivs.get(topState).hide();
         switch(topState) {
+            case GUIState.Load:
+                clearInterval(this.loadingDotInterval); this.loadingDotInterval = null;
+                break;
             default:
                 break;
         }
@@ -1622,6 +1637,9 @@ class GUIManager {
         [GUIState.MainMenu,$('#divMenuOverlay')],
         [GUIState.Ingame,$('#divInGameOverlay')]
     ]);
+
+    private loadingDotInterval;
+
     private currentStates: Array<GUIState> = [GUIState.Load];
     private static instance : GUIManager = new GUIManager();
 }
