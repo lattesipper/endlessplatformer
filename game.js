@@ -7,7 +7,7 @@ var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, ge
         step((generator = generator.apply(thisArg, _arguments || [])).next());
     });
 };
-import * as BABYLON from 'babylonjs';
+//import * as BABYLON from 'babylonjs';
 window.addEventListener('DOMContentLoaded', () => {
     // Create canvas and engine.
     const canvas = (document.getElementById('renderCanvas'));
@@ -1565,7 +1565,7 @@ window.addEventListener('DOMContentLoaded', () => {
         })
             .add({
             targets: '#imgCompanyLogo',
-            left: '130%',
+            left: '100%',
             delay: 2000,
         });
     });

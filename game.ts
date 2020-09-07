@@ -1588,7 +1588,7 @@ $('#txtPlay').on('click', () => {
     })
     .add({
         targets: '#imgCompanyLogo',
-        left: '130%',
+        left: '100%',
         delay: 2000,
     });
 });
