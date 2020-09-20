@@ -127,9 +127,9 @@ window.addEventListener('DOMContentLoaded', () => {
                         easing: 'linear'
                     },
                     complete: (anim) => {
-                        if ($('#divLoadBar')[0].style['width'] == '100%') {
-                            this.finishLoading();
-                        }
+                        // if ($('#divLoadBar')[0].style['width'] == '100%') {
+                        //     this.finishLoading();
+                        // }
                         this.isAnimating = false;
                         this.updatePendingAnimations();
                     }
@@ -1583,7 +1583,7 @@ window.addEventListener('DOMContentLoaded', () => {
                 [GUIState.MainMenu, $('#divMenuOverlay')],
                 [GUIState.Ingame, $('#divInGameOverlay')]
             ]);
-            this.currentStates = [GUIState.Load];
+            this.currentStates = [];
             $('#txtPlay').on('click', () => { this.replaceState(GUIState.Logo); });
             $('#txtTutorial').on('click', () => { alert("UNIMPLEMENTED"); });
             $('#txtPlayGame').on('click', () => { this.replaceState(GUIState.Ingame); });
@@ -1592,21 +1592,13 @@ window.addEventListener('DOMContentLoaded', () => {
             const referenceHeight = 1277;
             $('.makeRelative').each(function () {
                 const elm = $(this);
-                const paddingTop = parseInt(elm.css('padding-top').replace('px', ''));
-                const paddingBottom = parseInt(elm.css('padding-bottom').replace('px', ''));
-                const paddingLeft = parseInt(elm.css('padding-left').replace('px', ''));
-                const paddingRight = parseInt(elm.css('padding-right').replace('px', ''));
-                const borderTop = parseInt(elm.css('border-top').replace('px', ''));
-                const borderBottom = parseInt(elm.css('border-bottom').replace('px', ''));
-                const borderLeft = parseInt(elm.css('border-left').replace('px', ''));
-                const borderRight = parseInt(elm.css('border-right').replace('px', ''));
                 elm.css("left", (parseInt(elm.css('left').replace('px', '')) / referenceWidth) * 100 + '%');
                 elm.css("width", (parseInt(elm.css('width').replace('px', '')) / referenceWidth) * 100 + '%');
                 elm.css("top", (parseInt(elm.css('top').replace('px', '')) / referenceHeight) * 100 + '%');
-                elm.css("padding", (parseInt(elm.css('padding').replace('px', '')) / referenceHeight) * 100 + 'vh');
                 elm.css("font-size", (parseInt(elm.css('height').replace('px', '')) / referenceHeight) * 100 + 'vh');
                 elm.css("height", (parseInt(elm.css('height').replace('px', '')) / referenceHeight) * 100 + '%');
             });
+            this.pushState(GUIState.Load);
         }
         static getInstance() { return this.instance; }
         static LoadResources() {
@@ -1622,15 +1614,18 @@ window.addEventListener('DOMContentLoaded', () => {
                 .show();
             switch (newState) {
                 case GUIState.Load:
-                    let dotCount = 1;
+                    let dotCount = 3;
                     this.loadingDotInterval = setInterval(() => {
                         dotCount++;
                         if (dotCount > 3)
                             dotCount = 1;
-                        let dotStr = '';
-                        for (let i = 0; i < dotCount; i++)
-                            dotStr += '.';
-                        $('#txtLoadingDots').text(dotStr);
+                        $('.txtLoadingDots').css("visibility", "hidden");
+                        if (dotCount >= 1)
+                            $('#txtLoadingDots1').css("visibility", "visible");
+                        if (dotCount >= 2)
+                            $('#txtLoadingDots2').css("visibility", "visible");
+                        if (dotCount >= 3)
+                            $('#txtLoadingDots3').css("visibility", "visible");
                     }, 500);
                     break;
                 case GUIState.Logo:
