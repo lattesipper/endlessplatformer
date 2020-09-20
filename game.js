@@ -219,6 +219,11 @@ window.addEventListener('DOMContentLoaded', () => {
             console.assert(this.running);
             this.running = false;
         }
+        forceFinish() {
+            console.assert(this.running);
+            this.stop();
+            this.executeCallback();
+        }
         isRunning() { return this.running; }
         isPaused() { return this.paused; }
     }
@@ -1295,7 +1300,8 @@ window.addEventListener('DOMContentLoaded', () => {
             super();
             this.bestHeight = 0;
             this.health = 5;
-            this.fallDelayTimer = new GameTimer();
+            this.gravityDelayTimer = new GameTimer();
+            this.invulnerabilityTimer = new GameTimer();
             this.setCollisionGroup(CollisionGroups.Player);
             this.setTerminalVelocity(Player.MAX_Y_SPEED);
             const particleSystem = new BABYLON.ParticleSystem("particles", 2000, scene);
@@ -1359,7 +1365,7 @@ window.addEventListener('DOMContentLoaded', () => {
         damadge(damadger = null) {
             // we may be damadged by multiple entities in the same frame, before invulnerability
             // has been applied. prevent multiple damadges in the same frame
-            if (this.getCollisionGroup() == CollisionGroups.LevelOnly)
+            if (this.invulnerabilityTimer.isRunning())
                 return false;
             this.health--;
             if (this.health == 0) {
@@ -1368,10 +1374,10 @@ window.addEventListener('DOMContentLoaded', () => {
             else {
                 this.getMeshInstance().visibility = 0.5;
                 this.setCollisionGroup(CollisionGroups.LevelOnly);
-                setTimeout(() => {
+                this.invulnerabilityTimer.start(() => {
                     this.getMeshInstance().visibility = 1;
                     this.setCollisionGroup(CollisionGroups.Player);
-                }, 2000);
+                }, Player.INVULNERABILITY_DELAY_TIME_IN_SECONDS, false);
                 if (damadger) {
                     this.setVelocity(this.getPos().subtract(damadger.getPos()).normalize().scale(Player.DAMAGE_MOVE_IMPULSE));
                 }
@@ -1384,9 +1390,9 @@ window.addEventListener('DOMContentLoaded', () => {
                 if (!Player.SOUND_HIT_HEAD.isPlaying)
                     Player.SOUND_HIT_HEAD.play();
                 this.setGravity(0);
-                this.fallDelayTimer.start(() => {
+                this.gravityDelayTimer.start(() => {
                     this.setGravity(Player.GRAVITY);
-                }, 0.2, false);
+                }, Player.GRAVITY_DELAY_TIME_IN_SECONDS, false);
             }
             // if (physBox instanceof Boulder) {
             //     this.damadge(physBox);
@@ -1451,6 +1457,8 @@ window.addEventListener('DOMContentLoaded', () => {
                             this.getVelocity().y = Player.SIDE_JUMP_IMPULSE;
                             if (!Player.SOUND_HIT_HEAD.isPlaying)
                                 Player.SOUND_JUMP.play();
+                            if (this.gravityDelayTimer.isRunning())
+                                this.gravityDelayTimer.forceFinish();
                         }
                     }
                 });
@@ -1464,7 +1472,7 @@ window.addEventListener('DOMContentLoaded', () => {
                     this.setGravity(0);
                 }
             }
-            else if (!this.fallDelayTimer.isRunning()) {
+            else if (!this.gravityDelayTimer.isRunning()) {
                 // not sliding, apply GRAVITY as normal
                 this.setGravity(Player.GRAVITY);
             }
@@ -1525,7 +1533,7 @@ window.addEventListener('DOMContentLoaded', () => {
         }
         afterCollisions(deltaT) {
             super.afterCollisions(deltaT);
-            this.fallDelayTimer.update(deltaT);
+            this.gravityDelayTimer.update(deltaT);
             camera.setY(this.getPos().y);
             light2.position.copyFrom(this.getPos()).addInPlaceFromFloats(0, 2, 0);
             // Death conditions
@@ -1557,6 +1565,8 @@ window.addEventListener('DOMContentLoaded', () => {
     // Gravity & Max speed
     Player.GRAVITY = 0.015;
     Player.MAX_Y_SPEED = 0.5;
+    Player.GRAVITY_DELAY_TIME_IN_SECONDS = 0.2;
+    Player.INVULNERABILITY_DELAY_TIME_IN_SECONDS = 2;
     Player.MESH_POOL = new MeshPool(2, PoolType.Cloning);
     let GUIState;
     (function (GUIState) {
@@ -1578,6 +1588,25 @@ window.addEventListener('DOMContentLoaded', () => {
             $('#txtTutorial').on('click', () => { alert("UNIMPLEMENTED"); });
             $('#txtPlayGame').on('click', () => { this.replaceState(GUIState.Ingame); });
             $('#txtAbout').on('click', () => { alert("UNIMPLEMENTED"); });
+            const referenceWidth = 1920;
+            const referenceHeight = 1277;
+            $('.makeRelative').each(function () {
+                const elm = $(this);
+                const paddingTop = parseInt(elm.css('padding-top').replace('px', ''));
+                const paddingBottom = parseInt(elm.css('padding-bottom').replace('px', ''));
+                const paddingLeft = parseInt(elm.css('padding-left').replace('px', ''));
+                const paddingRight = parseInt(elm.css('padding-right').replace('px', ''));
+                const borderTop = parseInt(elm.css('border-top').replace('px', ''));
+                const borderBottom = parseInt(elm.css('border-bottom').replace('px', ''));
+                const borderLeft = parseInt(elm.css('border-left').replace('px', ''));
+                const borderRight = parseInt(elm.css('border-right').replace('px', ''));
+                elm.css("left", (parseInt(elm.css('left').replace('px', '')) / referenceWidth) * 100 + '%');
+                elm.css("width", (parseInt(elm.css('width').replace('px', '')) / referenceWidth) * 100 + '%');
+                elm.css("top", (parseInt(elm.css('top').replace('px', '')) / referenceHeight) * 100 + '%');
+                elm.css("padding", (parseInt(elm.css('padding').replace('px', '')) / referenceHeight) * 100 + 'vh');
+                elm.css("font-size", (parseInt(elm.css('height').replace('px', '')) / referenceHeight) * 100 + 'vh');
+                elm.css("height", (parseInt(elm.css('height').replace('px', '')) / referenceHeight) * 100 + '%');
+            });
         }
         static getInstance() { return this.instance; }
         static LoadResources() {

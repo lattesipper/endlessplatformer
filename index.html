@@ -70,14 +70,11 @@
     </head>
    <body>
     <div style="width: 100%; height: 100%">
-        <div style="height:100%; width: 150.278884462vh; margin-left: auto; margin-right: auto; position: relative; overflow: hidden;">
+        <div style="height:100%; width: 150.278884462vh; margin: auto; position: relative; overflow: hidden;">
             <div id="divLoadingOverlay" class="stateOverlay">
-                <img id="imgCompanyLogo" src='https://raw.githubusercontent.com/lattesipper/endlessplatformer/master/resources/guitextures/oldshadowbox.png' style="height:15%; top:30%; left: 65%; position: absolute;">
-                <div id="divLoad" style="width:50%; height:10vh; position: absolute; top: 45%; left: 25%; border: 1vh solid black; padding: 1vh; position: relative;">
-                    <div id="divLoadBar" style="height: 100%; width:0%; background-color: black;"></div>
-                </div>
-                <div id="txtPlay" class="txtMenu" style="font-family: bdcartoon; color: black; top: 65%; width: 100%; text-align: center; position: absolute; display: none;">PLAY</div>
-                <div id="txtLoading" style="font-family: bdcartoon; font-size: 10vh; color: black; top: 65%; left: 33%; position: absolute;">LOADING<span id="txtLoadingDots">.</span></div>
+                <div id="divLoad" class="makeRelative" style="width:1142px; height:214px; position: absolute; top: 433px; left: 389px; position: relative; background-image: url('https://raw.githubusercontent.com/lattesipper/endlessplatformer/master/resources/guitextures/loadingBarTop.png');"></div>
+                <div id="divLoadPoint" class="makeRelative" style="width: 81px; height:77px; left: 450px; top: 502px; background-image: url('https://raw.githubusercontent.com/lattesipper/endlessplatformer/master/resources/guitextures/loadingBarTip.png');"></div>
+                <div class='makeRelative' id="txtLoading" style="font-family: bdcartoon; color: black; top: 747px; left: 456px; height:117px; position: absolute;">LOADING<span id="txtLoadingDots">.</span></div>
             </div>
             <div id="divLogoOverlay" class="stateOverlay">
                 <img id="imgCompanyLogo" src='https://raw.githubusercontent.com/lattesipper/endlessplatformer/master/resources/guitextures/logo.png' style="width:30%; height:30%; top: 35%; left: -30%; position: absolute;">

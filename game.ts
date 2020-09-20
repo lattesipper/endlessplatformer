@@ -200,6 +200,11 @@ class GameTimer {
         console.assert(this.running);
         this.running = false;
     }
+    public forceFinish() {
+        console.assert(this.running);
+        this.stop();
+        this.executeCallback();
+    }
     public isRunning() : boolean { return this.running; }
     public isPaused() : boolean { return this.paused; }
 
@@ -1386,7 +1391,7 @@ class Player extends PhysBox {
     public damadge(damadger: PhysBox = null) : boolean {
         // we may be damadged by multiple entities in the same frame, before invulnerability
         // has been applied. prevent multiple damadges in the same frame
-        if (this.getCollisionGroup() == CollisionGroups.LevelOnly)
+        if (this.invulnerabilityTimer.isRunning())
             return false;
         this.health--;
         if (this.health == 0) {
@@ -1394,10 +1399,10 @@ class Player extends PhysBox {
         } else {
             this.getMeshInstance().visibility = 0.5;
             this.setCollisionGroup(CollisionGroups.LevelOnly);
-            setTimeout(() => {
+            this.invulnerabilityTimer.start(() => {
                 this.getMeshInstance().visibility = 1;
                 this.setCollisionGroup(CollisionGroups.Player);
-            }, 2000);
+            }, Player.INVULNERABILITY_DELAY_TIME_IN_SECONDS, false);
             if (damadger) {
                 this.setVelocity(this.getPos().subtract(damadger.getPos()).normalize().scale(Player.DAMAGE_MOVE_IMPULSE));
             }
@@ -1411,9 +1416,9 @@ class Player extends PhysBox {
             if(!Player.SOUND_HIT_HEAD.isPlaying)
                 Player.SOUND_HIT_HEAD.play();
             this.setGravity(0);
-            this.fallDelayTimer.start(() => {
+            this.gravityDelayTimer.start(() => {
                 this.setGravity(Player.GRAVITY);
-            }, 0.2, false);
+            }, Player.GRAVITY_DELAY_TIME_IN_SECONDS, false);
         }
         // if (physBox instanceof Boulder) {
         //     this.damadge(physBox);
@@ -1457,6 +1462,7 @@ class Player extends PhysBox {
                     if (InputManager.getInstance().isKeyPressed(' ')) {
                         this.getVelocity()[side.dim] = Player.SIDE_XZ_IMPULSE * side.direction * -1; this.getVelocity().y = Player.SIDE_JUMP_IMPULSE;
                         if (!Player.SOUND_HIT_HEAD.isPlaying) Player.SOUND_JUMP.play();
+                        if (this.gravityDelayTimer.isRunning()) this.gravityDelayTimer.forceFinish();
                     }
                 }
             });    
@@ -1470,7 +1476,7 @@ class Player extends PhysBox {
                 this.getVelocity().y = avgYSpeed;
                 this.setGravity(0);
             }
-        } else if (!this.fallDelayTimer.isRunning()) {
+        } else if (!this.gravityDelayTimer.isRunning()) {
             // not sliding, apply GRAVITY as normal
             this.setGravity(Player.GRAVITY);
         }
@@ -1524,7 +1530,7 @@ class Player extends PhysBox {
     public afterCollisions(deltaT: number) {
         super.afterCollisions(deltaT);
 
-        this.fallDelayTimer.update(deltaT);
+        this.gravityDelayTimer.update(deltaT);
 
         camera.setY(this.getPos().y);
 
@@ -1572,7 +1578,9 @@ class Player extends PhysBox {
     private bestHeight: number = 0;
     private explosionParticleSystem: BABYLON.ParticleSystem;
     private health: number = 5;
-    private fallDelayTimer: GameTimer = new GameTimer();
+
+    private gravityDelayTimer: GameTimer = new GameTimer();     private static GRAVITY_DELAY_TIME_IN_SECONDS: number = 0.2;
+    private invulnerabilityTimer: GameTimer = new GameTimer();  private static INVULNERABILITY_DELAY_TIME_IN_SECONDS: number = 2;
 
     private static MESH_POOL : MeshPool = new MeshPool(2, PoolType.Cloning);
 }
@@ -1653,6 +1661,29 @@ class GUIManager {
         $('#txtTutorial').on('click', () => { alert("UNIMPLEMENTED"); });
         $('#txtPlayGame').on('click', () => { this.replaceState(GUIState.Ingame); });
         $('#txtAbout').on('click', () => { alert("UNIMPLEMENTED"); });
+
+        const referenceWidth = 1920;
+        const referenceHeight = 1277;
+        $('.makeRelative').each(function() {
+            const elm = $(this);
+
+            const paddingTop = parseInt(elm.css('padding-top').replace('px', ''));
+            const paddingBottom = parseInt(elm.css('padding-bottom').replace('px', ''));
+            const paddingLeft = parseInt(elm.css('padding-left').replace('px', ''));
+            const paddingRight = parseInt(elm.css('padding-right').replace('px', ''));
+            const borderTop = parseInt(elm.css('border-top').replace('px', ''));
+            const borderBottom = parseInt(elm.css('border-bottom').replace('px', ''));
+            const borderLeft = parseInt(elm.css('border-left').replace('px', ''));
+            const borderRight = parseInt(elm.css('border-right').replace('px', ''));
+
+
+            elm.css("left", (parseInt(elm.css('left').replace('px', '')) / referenceWidth) * 100 + '%');
+            elm.css("width", (parseInt(elm.css('width').replace('px', '')) / referenceWidth) * 100 + '%');
+            elm.css("top", (parseInt(elm.css('top').replace('px', '')) / referenceHeight) * 100 + '%');
+            elm.css("padding", (parseInt(elm.css('padding').replace('px', '')) / referenceHeight) * 100 + 'vh');
+            elm.css("font-size", (parseInt(elm.css('height').replace('px', '')) / referenceHeight) * 100 + 'vh');
+            elm.css("height", (parseInt(elm.css('height').replace('px', '')) / referenceHeight) * 100 + '%');
+        });
     }
     private overlayDivs : Map<GUIState, any> = new Map([ 
         [GUIState.Load,$('#divLoadingOverlay')], 
