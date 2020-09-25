@@ -94,7 +94,7 @@ class ResourceLoader extends Observable{
         this.updateLoadedBytes(sizeInBytes);
     }
     private updateLoadedBytes(bytes) {
-        this.animationBarPercentages.push((bytes / ResourceLoader.TOTAL_RESOURCES_SIZE_IN_BYTES) * 100);
+        this.animationBarPercentages.push(bytes / ResourceLoader.TOTAL_RESOURCES_SIZE_IN_BYTES);
         if (!this.isAnimating)
             this.updatePendingAnimations();
     }
@@ -103,10 +103,10 @@ class ResourceLoader extends Observable{
             const barPToAdd = this.animationBarPercentages.shift();
             this.isAnimating = true;
             anime({
-                targets: '#divLoadBar',
-                width: {
-                    value: '+=' + barPToAdd + '%',
-                    duration: (barPToAdd / 100) * 1000,
+                targets: '#divLoadPoint',
+                left: {
+                    value: '+=' + GUIManager.convertPixelToPercentage(930 * barPToAdd, 'x') + '%',
+                    duration: 2000 * barPToAdd,
                     easing: 'linear'
                 },
                 complete: (anim) => {
@@ -115,6 +115,14 @@ class ResourceLoader extends Observable{
                     // }
                     this.isAnimating = false;
                     this.updatePendingAnimations();
+                }
+            });
+            anime({
+                targets: '#divLoadBar',
+                width: {
+                    value: '+=' + GUIManager.convertPixelToPercentage(930 * barPToAdd, 'x') + '%',
+                    duration: 2000 * barPToAdd,
+                    easing: 'linear'
                 }
             });
         }
@@ -1656,22 +1664,19 @@ class GUIManager {
         this.pushState(newState);
     }
     public constructor() {
+        $('.makeRelative').each(function() {
+            const elm = $(this);
+            elm.css("font-size",GUIManager.convertPixelToPercentage(elm.css('height'), 'y')  + 'vh');
+            elm.css("width",    GUIManager.convertPixelToPercentage(elm.css('width'), 'x')      + '%');
+            elm.css("height",   GUIManager.convertPixelToPercentage(elm.css('height'), 'y')     + '%');
+            elm.css("left",     GUIManager.convertPixelToPercentage(elm.css('left'), 'x')       + '%');
+            elm.css("top",      GUIManager.convertPixelToPercentage(elm.css('top'), 'y')        + '%');
+        });
+
         $('#txtPlay').on('click', () => { this.replaceState(GUIState.Logo); });
         $('#txtTutorial').on('click', () => { alert("UNIMPLEMENTED"); });
         $('#txtPlayGame').on('click', () => { this.replaceState(GUIState.Ingame); });
         $('#txtAbout').on('click', () => { alert("UNIMPLEMENTED"); });
-
-        const referenceWidth = 1920;
-        const referenceHeight = 1277;
-
-        $('.makeRelative').each(function() {
-            const elm = $(this);
-            elm.css("left", (parseInt(elm.css('left').replace('px', '')) / referenceWidth) * 100 + '%');
-            elm.css("width", (parseInt(elm.css('width').replace('px', '')) / referenceWidth) * 100 + '%');
-            elm.css("top", (parseInt(elm.css('top').replace('px', '')) / referenceHeight) * 100 + '%');
-            elm.css("font-size", (parseInt(elm.css('height').replace('px', '')) / referenceHeight) * 100 + 'vh');
-            elm.css("height", (parseInt(elm.css('height').replace('px', '')) / referenceHeight) * 100 + '%');
-        });
 
         this.pushState(GUIState.Load);
     }
@@ -1682,7 +1687,15 @@ class GUIManager {
         [GUIState.Ingame,$('#divInGameOverlay')]
     ]);
 
+    public static convertPixelToPercentage(pixelValue: string|number, axis: string) : number {
+        return ((parseInt(pixelValue.toString().replace('px', '')) / (axis == 'x' ? GUIManager.REFERENCE_WIDTH : GUIManager.REFERENCE_HEIGHT)) * 100);
+    }
+
     private loadingDotInterval;
+
+    private static REFERENCE_WIDTH = 1920;
+    private static REFERENCE_HEIGHT = 1277;
+
 
     private currentStates: Array<GUIState> = [];
     private static instance : GUIManager = new GUIManager();

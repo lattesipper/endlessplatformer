@@ -111,7 +111,7 @@ window.addEventListener('DOMContentLoaded', () => {
             });
         }
         updateLoadedBytes(bytes) {
-            this.animationBarPercentages.push((bytes / ResourceLoader.TOTAL_RESOURCES_SIZE_IN_BYTES) * 100);
+            this.animationBarPercentages.push(bytes / ResourceLoader.TOTAL_RESOURCES_SIZE_IN_BYTES);
             if (!this.isAnimating)
                 this.updatePendingAnimations();
         }
@@ -120,10 +120,10 @@ window.addEventListener('DOMContentLoaded', () => {
                 const barPToAdd = this.animationBarPercentages.shift();
                 this.isAnimating = true;
                 anime({
-                    targets: '#divLoadBar',
-                    width: {
-                        value: '+=' + barPToAdd + '%',
-                        duration: (barPToAdd / 100) * 1000,
+                    targets: '#divLoadPoint',
+                    left: {
+                        value: '+=' + GUIManager.convertPixelToPercentage(930 * barPToAdd, 'x') + '%',
+                        duration: 2000 * barPToAdd,
                         easing: 'linear'
                     },
                     complete: (anim) => {
@@ -132,6 +132,14 @@ window.addEventListener('DOMContentLoaded', () => {
                         // }
                         this.isAnimating = false;
                         this.updatePendingAnimations();
+                    }
+                });
+                anime({
+                    targets: '#divLoadBar',
+                    width: {
+                        value: '+=' + GUIManager.convertPixelToPercentage(930 * barPToAdd, 'x') + '%',
+                        duration: 2000 * barPToAdd,
+                        easing: 'linear'
                     }
                 });
             }
@@ -1584,20 +1592,18 @@ window.addEventListener('DOMContentLoaded', () => {
                 [GUIState.Ingame, $('#divInGameOverlay')]
             ]);
             this.currentStates = [];
+            $('.makeRelative').each(function () {
+                const elm = $(this);
+                elm.css("font-size", GUIManager.convertPixelToPercentage(elm.css('height'), 'y') + 'vh');
+                elm.css("width", GUIManager.convertPixelToPercentage(elm.css('width'), 'x') + '%');
+                elm.css("height", GUIManager.convertPixelToPercentage(elm.css('height'), 'y') + '%');
+                elm.css("left", GUIManager.convertPixelToPercentage(elm.css('left'), 'x') + '%');
+                elm.css("top", GUIManager.convertPixelToPercentage(elm.css('top'), 'y') + '%');
+            });
             $('#txtPlay').on('click', () => { this.replaceState(GUIState.Logo); });
             $('#txtTutorial').on('click', () => { alert("UNIMPLEMENTED"); });
             $('#txtPlayGame').on('click', () => { this.replaceState(GUIState.Ingame); });
             $('#txtAbout').on('click', () => { alert("UNIMPLEMENTED"); });
-            const referenceWidth = 1920;
-            const referenceHeight = 1277;
-            $('.makeRelative').each(function () {
-                const elm = $(this);
-                elm.css("left", (parseInt(elm.css('left').replace('px', '')) / referenceWidth) * 100 + '%');
-                elm.css("width", (parseInt(elm.css('width').replace('px', '')) / referenceWidth) * 100 + '%');
-                elm.css("top", (parseInt(elm.css('top').replace('px', '')) / referenceHeight) * 100 + '%');
-                elm.css("font-size", (parseInt(elm.css('height').replace('px', '')) / referenceHeight) * 100 + 'vh');
-                elm.css("height", (parseInt(elm.css('height').replace('px', '')) / referenceHeight) * 100 + '%');
-            });
             this.pushState(GUIState.Load);
         }
         static getInstance() { return this.instance; }
@@ -1674,7 +1680,12 @@ window.addEventListener('DOMContentLoaded', () => {
                 this.popState();
             this.pushState(newState);
         }
+        static convertPixelToPercentage(pixelValue, axis) {
+            return ((parseInt(pixelValue.toString().replace('px', '')) / (axis == 'x' ? GUIManager.REFERENCE_WIDTH : GUIManager.REFERENCE_HEIGHT)) * 100);
+        }
     }
+    GUIManager.REFERENCE_WIDTH = 1920;
+    GUIManager.REFERENCE_HEIGHT = 1277;
     GUIManager.instance = new GUIManager();
     Promise.all([
         GUIManager.LoadResources(),
