@@ -50,7 +50,7 @@ class Observable {
     private subscribers : Map<string, Set<CallableFunction>> = new Map();
 }
 
-class ResourceLoader extends Observable{
+class ResourceLoader extends Observable {
     public static getInstance() : ResourceLoader { return this.instance; }
     public async loadSound(name: string, sizeInBytes: number = 0) : Promise<BABYLON.Sound> {
         let loadedSound: BABYLON.Sound;
@@ -94,54 +94,24 @@ class ResourceLoader extends Observable{
         this.updateLoadedBytes(sizeInBytes);
     }
     private updateLoadedBytes(bytes) {
-        this.animationBarPercentages.push(bytes / ResourceLoader.TOTAL_RESOURCES_SIZE_IN_BYTES);
-        if (!this.isAnimating)
-            this.updatePendingAnimations();
-    }
-    private updatePendingAnimations() {
-        if (this.animationBarPercentages.length) {
-            const barPToAdd = this.animationBarPercentages.shift();
-            this.isAnimating = true;
-            anime({
-                targets: '#divLoadPoint',
-                left: {
-                    value: '+=' + GUIManager.convertPixelToPercentage(930 * barPToAdd, 'x') + '%',
-                    duration: 2000 * barPToAdd,
-                    easing: 'linear'
-                },
-                complete: (anim) => {
-                    // if ($('#divLoadBar')[0].style['width'] == '100%') {
-                    //     this.finishLoading();
-                    // }
-                    this.isAnimating = false;
-                    this.updatePendingAnimations();
-                }
-            });
-            anime({
-                targets: '#divLoadBar',
-                width: {
-                    value: '+=' + GUIManager.convertPixelToPercentage(930 * barPToAdd, 'x') + '%',
-                    duration: 2000 * barPToAdd,
-                    easing: 'linear'
-                }
-            });
+        const ratioToAdd = bytes / ResourceLoader.TOTAL_RESOURCES_SIZE_IN_BYTES;
+        this.loadedRatio += ratioToAdd;
+        this.fire('loadingProgress', ratioToAdd);
+        if (this.loadedRatio == 1) {
+            this.finishLoading();
         }
     }
     private finishLoading() {
         BABYLON.Texture.prototype.constructor = ((...args): any => { console.assert(false, "Attempted to load resource at runtime"); });
         BABYLON.Sound.prototype.constructor = ((...args): any => { console.assert(false, "Attempted to load resource at runtime"); });
         BABYLON.SceneLoader.ImportMesh = ((...args): any => { console.assert(false, "Attempted to load resource at runtime"); });
-        $('#txtLoading').hide();
-        $('#txtPlay').show();
+        this.fire('loadingFinish');
     }
 
+    private loadedRatio: number = 0;
     private static instance: ResourceLoader = new ResourceLoader();
     private static TOTAL_RESOURCES_SIZE_IN_BYTES: number = 5608983;
     private static RESOURCE_PATH = 'https://raw.githubusercontent.com/lattesipper/endlessplatformer/master/resources';
-
-    // loading bar animation properties
-    private animationBarPercentages: Array<number> = [];
-    private isAnimating: boolean = false;
 }
 class UtilityFunctions {
     public static fadeSound(sound: BABYLON.Sound, fadeTimeInSeconds : number, targetVolume: number, easingFunction = (t) => t, onDone = () => {}) {
@@ -1594,12 +1564,14 @@ class Player extends PhysBox {
 }
 
 enum GUIState {Load, Logo, MainMenu, Ingame}
-class GUIManager {
+class GUIManager extends Observable {
     public static getInstance() : GUIManager { return this.instance; }
     public static async LoadResources() {
         await ResourceLoader.getInstance().loadImageIntoContainer('test', 'https://raw.githubusercontent.com/lattesipper/endlessplatformer/master/resources/guitextures/tmpbackground.png', 0);
     }
-    public pushState(newState: GUIState) {
+    public pushState(newState: GUIState, lastState = null) {
+        lastState = lastState || this.getCurrentState();
+
         console.assert(!this.currentStates.some(currentState => currentState == newState));
         this.currentStates.push(newState);
         this.overlayDivs.get(newState)
@@ -1607,6 +1579,7 @@ class GUIManager {
             .show();
         switch(newState) {
             case GUIState.Load:
+                console.assert(lastState == null);
                 let dotCount = 3;
                 this.loadingDotInterval = setInterval(() => {
                     dotCount++;
@@ -1616,8 +1589,15 @@ class GUIManager {
                     if (dotCount >= 2) $('#txtLoadingDots2').css("visibility", "visible");
                     if (dotCount >= 3) $('#txtLoadingDots3').css("visibility", "visible");
                 }, 500);
+
+                ResourceLoader.getInstance().onEvent('loadingProgress', (ratioToAdd) => {
+                    this.animationBarRatios.push(ratioToAdd);
+                    if (!this.isAnimating)
+                        this.updatePendingAnimations();
+                });
                 break;
             case GUIState.Logo:
+                console.assert(lastState == GUIState.Load)
                 var tl = anime.timeline({
                     easing: 'easeOutExpo',
                     duration: 750
@@ -1625,16 +1605,20 @@ class GUIManager {
                 tl
                 .add({
                     targets: '#imgCompanyLogo',
-                    left: '35%'
+                    left: GUIManager.convertPixelToPercentage(567, 'x')
                 })
                 .add({
                     targets: '#imgCompanyLogo',
-                    left: '100%',
+                    left: GUIManager.convertPixelToPercentage(1920, 'x'),
                     delay: 2000,
                     complete: (anim) => { this.replaceState(GUIState.MainMenu); }
                 });
                 break;
+            case GUIState.MainMenu:
+                console.assert(lastState == GUIState.Logo);
+                break;
             case GUIState.Ingame:
+                console.assert(lastState == GUIState.Logo);
                 game = new Game();
                 game.start();
                 break;
@@ -1659,11 +1643,15 @@ class GUIManager {
         }
     }
     public replaceState(newState: GUIState) {
+        const lastState = this.getCurrentState();
         if (this.currentStates.length)
             this.popState();
-        this.pushState(newState);
+        this.pushState(newState, lastState);
     }
+    private getCurrentState() : GUIState { return this.currentStates.length > 0 ? this.currentStates[this.currentStates.length - 1] : null; }
     public constructor() {
+        super();
+
         $('.makeRelative').each(function() {
             const elm = $(this);
             elm.css("font-size",GUIManager.convertPixelToPercentage(elm.css('height'), 'y')  + 'vh');
@@ -1691,11 +1679,51 @@ class GUIManager {
         return ((parseInt(pixelValue.toString().replace('px', '')) / (axis == 'x' ? GUIManager.REFERENCE_WIDTH : GUIManager.REFERENCE_HEIGHT)) * 100);
     }
 
+    private updatePendingAnimations() {
+        if (this.animationBarRatios.length) {
+            const barRatioToAdd = this.animationBarRatios.shift();
+            this.isAnimating = true;
+
+            var finishCount = 0;
+            const onComplete = (anim) => {
+                if (++finishCount == 2) {
+                    this.totalLoadedRatio += barRatioToAdd;
+                    this.isAnimating = false;
+                    this.updatePendingAnimations();
+                    if (this.totalLoadedRatio == 1) {
+                        $('#txtLoading').hide();
+                        $('#txtPlay').show();
+                    }
+                }
+            };
+            anime
+                .timeline({
+                    easing: 'linear',
+                    duration: GUIManager.ANIMATION_TIME_MS * barRatioToAdd
+                })
+                .add({
+                    targets: '#divLoadPoint',
+                    left: { value: '+=' + GUIManager.convertPixelToPercentage(940 * barRatioToAdd, 'x') + '%' },
+                    complete: onComplete
+                }, 0)
+                .add({
+                    targets: '#divLoadBar',
+                    width: { value: '+=' + GUIManager.convertPixelToPercentage(955 * barRatioToAdd, 'x') + '%' },
+                    complete: onComplete
+                }, 0);
+        }
+    }
+
     private loadingDotInterval;
 
     private static REFERENCE_WIDTH = 1920;
     private static REFERENCE_HEIGHT = 1277;
 
+    // loading state
+    private static ANIMATION_TIME_MS : number = 2000;
+    private animationBarRatios: Array<number> = [];
+    private totalLoadedRatio: number = 0;
+    private isAnimating: boolean = false;
 
     private currentStates: Array<GUIState> = [];
     private static instance : GUIManager = new GUIManager();

@@ -53,6 +53,13 @@
                 color: darkgrey !important;
             }
 
+            #txtPlay:hover {
+                color: rgb(50, 50, 50) !important;
+                transform:scale(1.2,1.2);
+                -webkit-transform:scale(1.2,1.2);
+                -moz-transform:scale(1.2,1.2);
+            }
+
             @font-face {
                 font-family: 'bdcartoon';
                 src: url('https://raw.githubusercontent.com/lattesipper/endlessplatformer/master/resources/fonts/BD_Cartoon_Shout.ttf');
@@ -75,10 +82,11 @@
                 <img id="divLoadPoint" src="https://raw.githubusercontent.com/lattesipper/endlessplatformer/master/resources/guitextures/loadingBarTip.png" class="makeRelative" style="width: 75px; height:71px; position: absolute; left: 454px; top: 504px;">
                 <div id="divLoadBar" class="makeRelative" style="width: 0px; height:71px; position: absolute; left: 454px; top: 504px; background-color: black;"></div>
                 <img id="divLoad" src="https://raw.githubusercontent.com/lattesipper/endlessplatformer/master/resources/guitextures/loadingBarTop.png" class="makeRelative" style="width:1142px; height:214px; position: absolute; left: 389px; top: 433px; position: absolute">
-                <div class='makeRelative' id="txtLoading" style="font-family: bdcartoon; color: black; top: 747px; left: 456px; height:117px; width:1142px; position: absolute; text-align: center; ">LOADING<span class="txtLoadingDots" id="txtLoadingDots1">.</span><span class="txtLoadingDots" id="txtLoadingDots2">.</span><span class="txtLoadingDots" id="txtLoadingDots3">.</span></div>
+                <div class='makeRelative' id="txtLoading" style="font-family: bdcartoon; color: black; top: 747px; width:1142px; height:117px; left: 389px; position: absolute; text-align: center; ">LOADING<span class="txtLoadingDots" id="txtLoadingDots1">.</span><span class="txtLoadingDots" id="txtLoadingDots2">.</span><span class="txtLoadingDots" id="txtLoadingDots3">.</span></div>
+                <div class='makeRelative' id="txtPlay" style="display: none; font-family: bdcartoon; color: black; top: 747px; width:1142px; height:117px; left: 389px; position: absolute; text-align: center; ">PLAY</div>
             </div>
             <div id="divLogoOverlay" class="stateOverlay">
-                <img id="imgCompanyLogo" src='https://raw.githubusercontent.com/lattesipper/endlessplatformer/master/resources/guitextures/logo.png' style="width:30%; height:30%; top: 35%; left: -30%; position: absolute;">
+                <img id="imgCompanyLogo" class="makeRelative" src='https://raw.githubusercontent.com/lattesipper/endlessplatformer/master/resources/guitextures/logo.png' style="width:785px; height:785px; top: 246px; left: -785px; position: absolute;">
             </div>
             <div id="divMenuOverlay" class="stateOverlay" style="display: none;">
                 <img style="height:100%; width:100%" id="test">
