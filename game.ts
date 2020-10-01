@@ -1598,21 +1598,21 @@ class GUIManager extends Observable {
                 break;
             case GUIState.Logo:
                 console.assert(lastState == GUIState.Load)
-                var tl = anime.timeline({
-                    easing: 'easeOutExpo',
-                    duration: 750
-                });
-                tl
-                .add({
-                    targets: '#imgCompanyLogo',
-                    left: GUIManager.convertPixelToPercentage(567, 'x')
-                })
-                .add({
-                    targets: '#imgCompanyLogo',
-                    left: GUIManager.convertPixelToPercentage(1920, 'x'),
-                    delay: 2000,
-                    complete: (anim) => { this.replaceState(GUIState.MainMenu); }
-                });
+                anime
+                    .timeline({
+                        easing: 'easeOutExpo',
+                        duration: 750
+                    })
+                    .add({
+                        targets: '#imgCompanyLogo',
+                        left: GUIManager.convertPixelToPercentage(567, 'x')
+                    })
+                    .add({
+                        targets: '#imgCompanyLogo',
+                        left: GUIManager.convertPixelToPercentage(1920, 'x'),
+                        delay: 2000,
+                        complete: (anim) => { this.replaceState(GUIState.MainMenu); }
+                    });
                 break;
             case GUIState.MainMenu:
                 console.assert(lastState == GUIState.Logo);
@@ -1703,12 +1703,7 @@ class GUIManager extends Observable {
                 })
                 .add({
                     targets: '#divLoadPoint',
-                    left: { value: '+=' + GUIManager.convertPixelToPercentage(940 * barRatioToAdd, 'x') + '%' },
-                    complete: onComplete
-                }, 0)
-                .add({
-                    targets: '#divLoadBar',
-                    width: { value: '+=' + GUIManager.convertPixelToPercentage(955 * barRatioToAdd, 'x') + '%' },
+                    left: { value: '+=' + GUIManager.convertPixelToPercentage(928 * barRatioToAdd, 'x') + '%' },
                     complete: onComplete
                 }, 0);
         }
