@@ -1618,11 +1618,11 @@ window.addEventListener('DOMContentLoaded', () => {
                     break;
                 case GUIState.Logo:
                     console.assert(lastState == GUIState.Load);
-                    var tl = anime.timeline({
+                    anime
+                        .timeline({
                         easing: 'easeOutExpo',
                         duration: 750
-                    });
-                    tl
+                    })
                         .add({
                         targets: '#imgCompanyLogo',
                         left: GUIManager.convertPixelToPercentage(567, 'x')
@@ -1676,9 +1676,12 @@ window.addEventListener('DOMContentLoaded', () => {
             if (this.animationBarRatios.length) {
                 const barRatioToAdd = this.animationBarRatios.shift();
                 this.isAnimating = true;
-                var finishCount = 0;
-                const onComplete = (anim) => {
-                    if (++finishCount == 2) {
+                anime({
+                    targets: '#divLoadBottom',
+                    easing: 'linear',
+                    duration: GUIManager.ANIMATION_TIME_MS * barRatioToAdd,
+                    left: { value: '+=' + GUIManager.convertPixelToPercentage(928 * barRatioToAdd, 'x') + '%' },
+                    complete: () => {
                         this.totalLoadedRatio += barRatioToAdd;
                         this.isAnimating = false;
                         this.updatePendingAnimations();
@@ -1687,22 +1690,7 @@ window.addEventListener('DOMContentLoaded', () => {
                             $('#txtPlay').show();
                         }
                     }
-                };
-                anime
-                    .timeline({
-                    easing: 'linear',
-                    duration: GUIManager.ANIMATION_TIME_MS * barRatioToAdd
-                })
-                    .add({
-                    targets: '#divLoadPoint',
-                    left: { value: '+=' + GUIManager.convertPixelToPercentage(940 * barRatioToAdd, 'x') + '%' },
-                    complete: onComplete
-                }, 0)
-                    .add({
-                    targets: '#divLoadBar',
-                    width: { value: '+=' + GUIManager.convertPixelToPercentage(955 * barRatioToAdd, 'x') + '%' },
-                    complete: onComplete
-                }, 0);
+                });
             }
         }
     }

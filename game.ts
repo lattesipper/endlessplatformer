@@ -1683,10 +1683,12 @@ class GUIManager extends Observable {
         if (this.animationBarRatios.length) {
             const barRatioToAdd = this.animationBarRatios.shift();
             this.isAnimating = true;
-
-            var finishCount = 0;
-            const onComplete = (anim) => {
-                if (++finishCount == 2) {
+            anime({
+                targets: '#divLoadBottom',
+                easing: 'linear',
+                duration: GUIManager.ANIMATION_TIME_MS * barRatioToAdd,
+                left: { value: '+=' + GUIManager.convertPixelToPercentage(928 * barRatioToAdd, 'x') + '%' },
+                complete: () => {
                     this.totalLoadedRatio += barRatioToAdd;
                     this.isAnimating = false;
                     this.updatePendingAnimations();
@@ -1695,17 +1697,7 @@ class GUIManager extends Observable {
                         $('#txtPlay').show();
                     }
                 }
-            };
-            anime
-                .timeline({
-                    easing: 'linear',
-                    duration: GUIManager.ANIMATION_TIME_MS * barRatioToAdd
-                })
-                .add({
-                    targets: '#divLoadPoint',
-                    left: { value: '+=' + GUIManager.convertPixelToPercentage(928 * barRatioToAdd, 'x') + '%' },
-                    complete: onComplete
-                }, 0);
+            })
         }
     }
 
