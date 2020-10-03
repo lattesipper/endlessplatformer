@@ -124,7 +124,7 @@ window.addEventListener('DOMContentLoaded', () => {
         }
     }
     ResourceLoader.instance = new ResourceLoader();
-    ResourceLoader.TOTAL_RESOURCES_SIZE_IN_BYTES = 5608983;
+    ResourceLoader.TOTAL_RESOURCES_SIZE_IN_BYTES = 8022788;
     ResourceLoader.RESOURCE_PATH = 'https://raw.githubusercontent.com/lattesipper/endlessplatformer/master/resources';
     class UtilityFunctions {
         static fadeSound(sound, fadeTimeInSeconds, targetVolume, easingFunction = (t) => t, onDone = () => { }) {
@@ -1647,8 +1647,14 @@ window.addEventListener('DOMContentLoaded', () => {
         getStateDiv() { return $('#divLogoOverlay'); }
     }
     class GUIStateMainMenu extends GUIState {
+        static LoadResources() {
+            return __awaiter(this, void 0, void 0, function* () {
+                GUIStateMainMenu.backgroundSound = yield ResourceLoader.getInstance().loadSound("menuback.wav", 2413805);
+            });
+        }
         onEnter(lastState) {
             super.onEnter(lastState);
+            GUIStateMainMenu.backgroundSound.play();
             //console.assert(lastState == GUIState.Logo || lastState == GUIState.Load);
             anime({
                 targets: '#imgLogoText',
@@ -1676,6 +1682,7 @@ window.addEventListener('DOMContentLoaded', () => {
         }
         onEnd() {
             super.onEnd();
+            GUIStateMainMenu.backgroundSound.stop();
         }
         getStateDiv() { return $('#divMenuOverlay'); }
     }

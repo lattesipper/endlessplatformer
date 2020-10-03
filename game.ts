@@ -110,7 +110,7 @@ class ResourceLoader extends Observable {
 
     private loadedRatio: number = 0;
     private static instance: ResourceLoader = new ResourceLoader();
-    private static TOTAL_RESOURCES_SIZE_IN_BYTES: number = 5608983;
+    private static TOTAL_RESOURCES_SIZE_IN_BYTES: number = 8022788;
     private static RESOURCE_PATH = 'https://raw.githubusercontent.com/lattesipper/endlessplatformer/master/resources';
 }
 class UtilityFunctions {
@@ -1661,8 +1661,12 @@ class GUIStateLogo extends GUIState {
     public getStateDiv() { return $('#divLogoOverlay'); }
 }
 class GUIStateMainMenu extends GUIState {
+    public static async LoadResources() {
+        GUIStateMainMenu.backgroundSound = await ResourceLoader.getInstance().loadSound("menuback.wav", 2413805);
+    }
     public onEnter(lastState: GUIState) {
         super.onEnter(lastState);
+        GUIStateMainMenu.backgroundSound.play();
         //console.assert(lastState == GUIState.Logo || lastState == GUIState.Load);
         anime({
             targets: '#imgLogoText',
@@ -1690,8 +1694,11 @@ class GUIStateMainMenu extends GUIState {
     }
     public onEnd() {
         super.onEnd();
+        GUIStateMainMenu.backgroundSound.stop();
     }
     public getStateDiv() { return $('#divMenuOverlay'); }
+    
+    private static backgroundSound: BABYLON.Sound;
 }
 class GUIStateInGame extends GUIState {
     public onEnter(lastState: GUIState) {
