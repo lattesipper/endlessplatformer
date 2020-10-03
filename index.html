@@ -22,7 +22,12 @@
             }
 
             .stateOverlay {
-                width:100%; height:100%; display: flex;
+                position: absolute;
+                left: 0px;
+                right: 0px;
+                width:100%; 
+                height:100%; 
+                display: flex;
             }
 
             #divMenuOverlay {
@@ -58,7 +63,7 @@
                 font-family: bdcartoon; 
                 text-align: center;
             }
-            
+
             .menuH1 {
                 color: black !important;
                 font-family: bdcartoon; 
@@ -91,7 +96,7 @@
                 <img id="divLoadTop" class="makeRelative" src="https://raw.githubusercontent.com/lattesipper/endlessplatformer/master/resources/guitextures/loadingBarTop.png" style="left: 389px; top: 433px; width:1142px; height:214px;">
                 <div id="divLoadHide" class="makeRelative" style="left: 0px; top: 433px; width:389px; height:214px; background-color: white; "></div>
                 <div id="txtLoading" class='makeRelative' style="font-family: bdcartoon; text-align: center; color: black; left: 389px; top: 747px; width:1142px; height:117px;">LOADING<span class="txtLoadingDots" id="txtLoadingDots1">.</span><span class="txtLoadingDots" id="txtLoadingDots2">.</span><span class="txtLoadingDots" id="txtLoadingDots3">.</span></div>
-                <div id="txtPlay" class='makeRelative' style="text-align: center; font-family: bdcartoon; color: black; left: 389px; top: 747px; width:1142px; height:117px; display: none;">PLAY</div>
+                <div id="txtPlay" class='makeRelative menuH1' style="left: 389px; top: 747px; width:1142px; height:117px; display: none;">PLAY</div>
             </div>
             <div id="divLogoOverlay" class="stateOverlay">
                 <img id="imgCompanyLogo" class="makeRelative" src='https://raw.githubusercontent.com/lattesipper/endlessplatformer/master/resources/guitextures/logo.png' style="left: -785px; top: 246px; width:785px; height:785px;">
@@ -103,11 +108,19 @@
                 <img id="imgLogoCharacter" class="makeRelative" src="https://raw.githubusercontent.com/lattesipper/endlessplatformer/master/resources/guitextures/logoCharacter.png" style="left: 707px; top: 0px; width: 621px; height:527px;">
                 <img id="imgLogoText" class="makeRelative" src="https://raw.githubusercontent.com/lattesipper/endlessplatformer/master/resources/guitextures/logoText.png" style="left: 510px; top: 486px; width: 896px; height:261px; ">
                 <div id="txtVersionNumber" class="makeRelative menuVersion" style="top: 1205px; left: 1700px; width:170px; height:51px;">V0.1</div>
+            </div>
+            <div id="divMenuMainOverlay" class="stateOverlay" style="display: none;">
                 <div id="txtPlayGame" class="makeRelative menuH1" style="top: 751px; left: 727px; width:466px; height:80px;">PLAY</div>
                 <div id="txtTutorial" class="makeRelative menuH1" style="top: 853px; left: 727px; width:466px; height:80px;">TUTORIAL</div>
                 <div id="txtScores" class="makeRelative menuH1" style="top: 955px; left: 727px; width:466px; height:80px;">SCORES</div>
                 <div id="txtAbout" class="makeRelative menuH1" style="top: 1057px; left: 727px; width:466px; height:80px;">ABOUT</div>
                 <div id="txtSettings" class="makeRelative menuH1" style="top: 1159px; left: 727px; width:466px; height:80px;">SETTINGS</div>
+            </div>
+            <div id="divMenuScoresOverlay" class="stateOverlay" style="display: none;">
+            </div>
+            <div id="divMenuAboutOverlay" class="stateOverlay" style="display: none;">
+            </div>
+            <div id="divMenuSettingsOverlay" class="stateOverlay" style="display: none;">
             </div>
             <div id="divInGameOverlay" class="stateOverlay" style="display: none;">
                 <div style="width:20%; left:40%; height: 10vh; position: absolute; background-color: rgba(255, 0, 0, 0.5); text-align: center; vertical-align: center;">

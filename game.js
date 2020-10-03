@@ -1562,16 +1562,18 @@ window.addEventListener('DOMContentLoaded', () => {
         onCoverEnd() { }
     }
     class GUIStateLoad extends GUIState {
-        constructor() {
-            super(...arguments);
+        constructor(context) {
+            super(context);
             this.animationBarRatios = [];
             this.totalLoadedRatio = 0;
             this.isAnimating = false;
             this.loadingDotInterval = 0;
+            $('#txtPlay').on('click', () => {
+                this.context.replaceState(this.context.STATE_LOGO);
+            });
         }
         onEnter(lastState) {
             super.onEnter(lastState);
-            //console.assert(lastState == null);
             let dotCount = 3;
             this.loadingDotInterval = setInterval(() => {
                 dotCount++;
@@ -1610,7 +1612,7 @@ window.addEventListener('DOMContentLoaded', () => {
                         this.totalLoadedRatio += barRatioToAdd;
                         this.isAnimating = false;
                         this.updatePendingAnimations();
-                        if (this.totalLoadedRatio == 1) {
+                        if (this.totalLoadedRatio >= 1) {
                             $('#txtLoading').hide();
                             $('#txtPlay').show();
                         }
@@ -1638,7 +1640,10 @@ window.addEventListener('DOMContentLoaded', () => {
                 targets: '#imgCompanyLogo',
                 left: GUIManager.convertPixelToPercentage(1920, 'x'),
                 delay: 2000,
-                complete: (anim) => { this.context.replaceState(this.context.STATE_MENU); }
+                complete: (anim) => {
+                    this.context.replaceState(this.context.STATE_MENU);
+                    this.context.pushState(this.context.STATE_MENUMAIN);
+                }
             });
         }
         onEnd() {
@@ -1646,15 +1651,16 @@ window.addEventListener('DOMContentLoaded', () => {
         }
         getStateDiv() { return $('#divLogoOverlay'); }
     }
-    class GUIStateMainMenu extends GUIState {
+    class GUIStateMenu extends GUIState {
         static LoadResources() {
             return __awaiter(this, void 0, void 0, function* () {
-                GUIStateMainMenu.backgroundSound = yield ResourceLoader.getInstance().loadSound("menuback.wav", 2413805);
+                GUIStateMenu.backgroundSound = yield ResourceLoader.getInstance().loadSound("menuback.mp3", 2413805);
+                GUIStateMenu.backgroundSound.loop = true;
             });
         }
         onEnter(lastState) {
             super.onEnter(lastState);
-            GUIStateMainMenu.backgroundSound.play();
+            GUIStateMenu.backgroundSound.play();
             //console.assert(lastState == GUIState.Logo || lastState == GUIState.Load);
             anime({
                 targets: '#imgLogoText',
@@ -1682,9 +1688,65 @@ window.addEventListener('DOMContentLoaded', () => {
         }
         onEnd() {
             super.onEnd();
-            GUIStateMainMenu.backgroundSound.stop();
+            GUIStateMenu.backgroundSound.stop();
         }
         getStateDiv() { return $('#divMenuOverlay'); }
+    }
+    class GUIStateMenuMain extends GUIState {
+        constructor(context) {
+            super(context);
+            $('#txtPlayGame').bind('click').on('click', () => {
+                this.context.popState();
+                this.context.replaceState(this.context.STATE_INGAME);
+            });
+            $('#txtTutorial').bind('click').on('click', () => {
+                this.context.popState();
+                this.context.replaceState(this.context.STATE_INGAME);
+            });
+            $('#txtScores').bind('click').on('click', () => {
+                this.context.replaceState(this.context.STATE_MENUSCORES);
+            });
+            $('#txtAbout').bind('click').on('click', () => {
+                this.context.replaceState(this.context.STATE_MENUABOUT);
+            });
+            $('#txtSettings').bind('click').on('click', () => {
+                this.context.replaceState(this.context.STATE_MENUSETTINGS);
+            });
+        }
+        onEnter(lastState) {
+            super.onEnter(lastState);
+        }
+        onEnd() {
+            super.onEnd();
+        }
+        getStateDiv() { return $('#divMenuMainOverlay'); }
+    }
+    class GUIStateMenuScores extends GUIState {
+        onEnter(lastState) {
+            super.onEnter(lastState);
+        }
+        onEnd() {
+            super.onEnd();
+        }
+        getStateDiv() { return $('#divMenuScoresOverlay'); }
+    }
+    class GUIStateMenuAbout extends GUIState {
+        onEnter(lastState) {
+            super.onEnter(lastState);
+        }
+        onEnd() {
+            super.onEnd();
+        }
+        getStateDiv() { return $('#divMenuAboutOverlay'); }
+    }
+    class GUIStateMenuSettings extends GUIState {
+        onEnter(lastState) {
+            super.onEnter(lastState);
+        }
+        onEnd() {
+            super.onEnd();
+        }
+        getStateDiv() { return $('#divMenuSettingsOverlay'); }
     }
     class GUIStateInGame extends GUIState {
         onEnter(lastState) {
@@ -1704,8 +1766,12 @@ window.addEventListener('DOMContentLoaded', () => {
             super();
             this.STATE_LOAD = new GUIStateLoad(this);
             this.STATE_LOGO = new GUIStateLogo(this);
-            this.STATE_MENU = new GUIStateMainMenu(this);
+            this.STATE_MENU = new GUIStateMenu(this);
+            this.STATE_MENUMAIN = new GUIStateMenuMain(this);
             this.STATE_INGAME = new GUIStateInGame(this);
+            this.STATE_MENUSCORES = new GUIStateMenuScores(this);
+            this.STATE_MENUABOUT = new GUIStateMenuAbout(this);
+            this.STATE_MENUSETTINGS = new GUIStateMenuSettings(this);
             this.currentStates = [];
             $('.makeRelative').each(function () {
                 const elm = $(this);
@@ -1715,10 +1781,6 @@ window.addEventListener('DOMContentLoaded', () => {
                 elm.css("left", GUIManager.convertPixelToPercentage(elm.css('left'), 'x') + '%');
                 elm.css("top", GUIManager.convertPixelToPercentage(elm.css('top'), 'y') + '%');
             });
-            $('#txtPlay').on('click', () => { this.replaceState(this.STATE_LOGO); });
-            $('#txtTutorial').on('click', () => { alert("UNIMPLEMENTED"); });
-            $('#txtPlayGame').on('click', () => { this.replaceState(this.STATE_INGAME); });
-            $('#txtAbout').on('click', () => { alert("UNIMPLEMENTED"); });
             this.pushState(this.STATE_LOAD);
             //this.pushState(GUIManager.STATE_MENU);
         }
@@ -1761,6 +1823,7 @@ window.addEventListener('DOMContentLoaded', () => {
     GUIManager.instance = new GUIManager();
     Promise.all([
         GUIManager.LoadResources(),
+        GUIStateMenu.LoadResources(),
         Game.LoadResources(),
         Player.LoadResources(),
         GameCamera.LoadResources(),
