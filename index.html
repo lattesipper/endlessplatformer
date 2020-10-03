@@ -44,31 +44,39 @@
                 touch-action: none;
             }
 
-            .txtMenu {
-                font-size: 10vh !important;
-                color: black !important;
-            }
-            .txtMenu:hover {
-                font-size: 10vh !important;
-                color: darkgrey !important;
+            @font-face {
+                font-family: 'bdcartoon';
+                src: url('https://raw.githubusercontent.com/lattesipper/endlessplatformer/master/resources/fonts/BD_Cartoon_Shout.ttf');
             }
 
-            #txtPlay:hover {
+            .makeRelative {
+                position: absolute;
+            }
+
+            .menuVersion {
+                color: black !important;
+                font-family: bdcartoon; 
+                text-align: center;
+            }
+            
+            .menuH1 {
+                color: black !important;
+                font-family: bdcartoon; 
+                text-align: center;
+            }
+            .menuH1:hover {
                 color: rgb(50, 50, 50) !important;
                 transform:scale(1.2,1.2);
                 -webkit-transform:scale(1.2,1.2);
                 -moz-transform:scale(1.2,1.2);
             }
 
-            @font-face {
-                font-family: 'bdcartoon';
-                src: url('https://raw.githubusercontent.com/lattesipper/endlessplatformer/master/resources/fonts/BD_Cartoon_Shout.ttf');
-            }
+
         </style>
 
         <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.5.1/jquery.min.js"></script>
         <script src="https://cdn.babylonjs.com/babylon.js"></script>
-        <script src="https://cdn.babylonjs.com/gui/babylon.gui.min.js"></script>
+        <script src="https://cdn.babylonjs.com/gui/bsbylon.gui.min.js"></script>
         <script src="https://cdn.babylonjs.com/loaders/babylonjs.loaders.min.js"></script>
         <script src="https://cdn.babylonjs.com/materialsLibrary/babylon.lavaMaterial.js"></script>
         <script src="https://code.jquery.com/pep/0.4.3/pep.js"></script>
@@ -79,20 +87,27 @@
     <div style="width: 100%; height: 100%">
         <div style="height:100%; width: 150.278884462vh; margin: auto; position: relative; overflow: hidden;">
             <div id="divLoadingOverlay" class="stateOverlay">
-                <img id="divLoadBottom" src="https://raw.githubusercontent.com/lattesipper/endlessplatformer/master/resources/guitextures/loadingBarBottom.png" class="makeRelative" style="width: 1015px; height:71px; position: absolute; left: -484px; top: 504px;">
-                <img id="divLoadTop" src="https://raw.githubusercontent.com/lattesipper/endlessplatformer/master/resources/guitextures/loadingBarTop.png" class="makeRelative" style="width:1142px; height:214px; position: absolute; left: 389px; top: 433px; ">
-                <div id="divLoadHide" class="makeRelative" style="width:389px; height:214px; position: absolute; left: 0px; top: 433px; background-color: white; "></div>
-                <div class='makeRelative' id="txtLoading" style="font-family: bdcartoon; color: black; top: 747px; width:1142px; height:117px; left: 389px; position: absolute; text-align: center; ">LOADING<span class="txtLoadingDots" id="txtLoadingDots1">.</span><span class="txtLoadingDots" id="txtLoadingDots2">.</span><span class="txtLoadingDots" id="txtLoadingDots3">.</span></div>
-                <div class='makeRelative' id="txtPlay" style="display: none; font-family: bdcartoon; color: black; top: 747px; width:1142px; height:117px; left: 389px; position: absolute; text-align: center; ">PLAY</div>
+                <img id="imgLoadBottom" class="makeRelative" src="https://raw.githubusercontent.com/lattesipper/endlessplatformer/master/resources/guitextures/loadingBarBottom.png" style="left: -484px; top: 504px; width: 1015px; height:71px;">
+                <img id="divLoadTop" class="makeRelative" src="https://raw.githubusercontent.com/lattesipper/endlessplatformer/master/resources/guitextures/loadingBarTop.png" style="left: 389px; top: 433px; width:1142px; height:214px;">
+                <div id="divLoadHide" class="makeRelative" style="left: 0px; top: 433px; width:389px; height:214px; background-color: white; "></div>
+                <div id="txtLoading" class='makeRelative' style="font-family: bdcartoon; text-align: center; color: black; left: 389px; top: 747px; width:1142px; height:117px;">LOADING<span class="txtLoadingDots" id="txtLoadingDots1">.</span><span class="txtLoadingDots" id="txtLoadingDots2">.</span><span class="txtLoadingDots" id="txtLoadingDots3">.</span></div>
+                <div id="txtPlay" class='makeRelative' style="text-align: center; font-family: bdcartoon; color: black; left: 389px; top: 747px; width:1142px; height:117px; display: none;">PLAY</div>
             </div>
             <div id="divLogoOverlay" class="stateOverlay">
-                <img id="imgCompanyLogo" class="makeRelative" src='https://raw.githubusercontent.com/lattesipper/endlessplatformer/master/resources/guitextures/logo.png' style="width:785px; height:785px; top: 246px; left: -785px; position: absolute;">
+                <img id="imgCompanyLogo" class="makeRelative" src='https://raw.githubusercontent.com/lattesipper/endlessplatformer/master/resources/guitextures/logo.png' style="left: -785px; top: 246px; width:785px; height:785px;">
             </div>
             <div id="divMenuOverlay" class="stateOverlay" style="display: none;">
-                <img style="height:100%; width:100%" id="test">
-                <div id="txtTutorial" class="txtMenu" style="font-family: bdcartoon; font-size: 10vh; color: black; top: 10%; left: 10%; text-align: center; position: absolute;">TUTORIAL</div>
-                <div id="txtPlayGame" class="txtMenu" style="font-family: bdcartoon; font-size: 10vh; color: black; top: 30%; left: 10%; text-align: center; position: absolute;">PLAY</div>
-                <div id="txtAbout" class="txtMenu" style="font-family: bdcartoon; font-size: 10vh; color: black; top: 50%; left: 10%; text-align: center; position: absolute;">ABOUT</div>
+                <div id="divMenuBackground" class="makeRelative" style="width: 1920px; height: 1277px; position: absolute; left: 0px; top: 0px; background-color: #fcfcfe;"></div>
+                <img id="imgBackgroundTopLoopA" class="makeRelative" src="https://raw.githubusercontent.com/lattesipper/endlessplatformer/master/resources/guitextures/backgroundTopLoop.png" style="left: -1920px; top: 0px; width: 1921px; height:752px;">
+                <img id="imgBackgroundTopLoopB" class="makeRelative" src="https://raw.githubusercontent.com/lattesipper/endlessplatformer/master/resources/guitextures/backgroundTopLoop.png" style="left: 0px; top: 0px; width: 1921px; height:752px;">
+                <img id="imgLogoCharacter" class="makeRelative" src="https://raw.githubusercontent.com/lattesipper/endlessplatformer/master/resources/guitextures/logoCharacter.png" style="left: 707px; top: 0px; width: 621px; height:527px;">
+                <img id="imgLogoText" class="makeRelative" src="https://raw.githubusercontent.com/lattesipper/endlessplatformer/master/resources/guitextures/logoText.png" style="left: 510px; top: 486px; width: 896px; height:261px; ">
+                <div id="txtVersionNumber" class="makeRelative menuVersion" style="top: 1205px; left: 1700px; width:170px; height:51px;">V0.1</div>
+                <div id="txtPlayGame" class="makeRelative menuH1" style="top: 751px; left: 727px; width:466px; height:80px;">PLAY</div>
+                <div id="txtTutorial" class="makeRelative menuH1" style="top: 853px; left: 727px; width:466px; height:80px;">TUTORIAL</div>
+                <div id="txtScores" class="makeRelative menuH1" style="top: 955px; left: 727px; width:466px; height:80px;">SCORES</div>
+                <div id="txtAbout" class="makeRelative menuH1" style="top: 1057px; left: 727px; width:466px; height:80px;">ABOUT</div>
+                <div id="txtSettings" class="makeRelative menuH1" style="top: 1159px; left: 727px; width:466px; height:80px;">SETTINGS</div>
             </div>
             <div id="divInGameOverlay" class="stateOverlay" style="display: none;">
                 <div style="width:20%; left:40%; height: 10vh; position: absolute; background-color: rgba(255, 0, 0, 0.5); text-align: center; vertical-align: center;">

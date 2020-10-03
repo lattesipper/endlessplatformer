@@ -1563,130 +1563,57 @@ class Player extends PhysBox {
     private static MESH_POOL : MeshPool = new MeshPool(2, PoolType.Cloning);
 }
 
-enum GUIState {Load, Logo, MainMenu, Ingame}
-class GUIManager extends Observable {
-    public static getInstance() : GUIManager { return this.instance; }
-    public static async LoadResources() {
-        await ResourceLoader.getInstance().loadImageIntoContainer('test', 'https://raw.githubusercontent.com/lattesipper/endlessplatformer/master/resources/guitextures/tmpbackground.png', 0);
-    }
-    public pushState(newState: GUIState, lastState = null) {
-        lastState = lastState || this.getCurrentState();
-
-        console.assert(!this.currentStates.some(currentState => currentState == newState));
-        this.currentStates.push(newState);
-        this.overlayDivs.get(newState)
-            .css('z-index', this.currentStates.length + '')
+abstract class GUIState {
+    public constructor(context: GUIManager) { this.context = context; }
+    public onEnter(lastState: GUIState) {
+        this.getStateDiv()
+            .css('z-index', (this.context.getActiveStateCount() + ''))
             .show();
-        switch(newState) {
-            case GUIState.Load:
-                console.assert(lastState == null);
-                let dotCount = 3;
-                this.loadingDotInterval = setInterval(() => {
-                    dotCount++;
-                    if (dotCount > 3) dotCount = 1;
-                    $('.txtLoadingDots').css("visibility", "hidden");
-                    if (dotCount >= 1) $('#txtLoadingDots1').css("visibility", "visible");
-                    if (dotCount >= 2) $('#txtLoadingDots2').css("visibility", "visible");
-                    if (dotCount >= 3) $('#txtLoadingDots3').css("visibility", "visible");
-                }, 500);
-
-                ResourceLoader.getInstance().onEvent('loadingProgress', (ratioToAdd) => {
-                    this.animationBarRatios.push(ratioToAdd);
-                    if (!this.isAnimating)
-                        this.updatePendingAnimations();
-                });
-                break;
-            case GUIState.Logo:
-                console.assert(lastState == GUIState.Load)
-                anime
-                    .timeline({
-                        easing: 'easeOutExpo',
-                        duration: 750
-                    })
-                    .add({
-                        targets: '#imgCompanyLogo',
-                        left: GUIManager.convertPixelToPercentage(567, 'x')
-                    })
-                    .add({
-                        targets: '#imgCompanyLogo',
-                        left: GUIManager.convertPixelToPercentage(1920, 'x'),
-                        delay: 2000,
-                        complete: (anim) => { this.replaceState(GUIState.MainMenu); }
-                    });
-                break;
-            case GUIState.MainMenu:
-                console.assert(lastState == GUIState.Logo);
-                break;
-            case GUIState.Ingame:
-                console.assert(lastState == GUIState.Logo);
-                game = new Game();
-                game.start();
-                break;
-            default:
-                break;
-        }
-        window.dispatchEvent(new Event('resize'));
-
     }
-    public popState() {
-        const topState = this.currentStates.pop();
-        this.overlayDivs.get(topState).hide();
-        switch(topState) {
-            case GUIState.Load:
-                clearInterval(this.loadingDotInterval); this.loadingDotInterval = null;
-                break;
-            case GUIState.Ingame:
-                game.dispose();
-                break;
-            default:
-                break;
-        }
+    public onEnd() {
+        this.getStateDiv()
+            .hide();
     }
-    public replaceState(newState: GUIState) {
-        const lastState = this.getCurrentState();
-        if (this.currentStates.length)
-            this.popState();
-        this.pushState(newState, lastState);
-    }
-    private getCurrentState() : GUIState { return this.currentStates.length > 0 ? this.currentStates[this.currentStates.length - 1] : null; }
-    public constructor() {
-        super();
+    public onCoverStart(newState: GUIState) { }
+    public onCoverEnd() { } 
+    public abstract getStateDiv(): any;
+    protected context: GUIManager;
+}
 
-        $('.makeRelative').each(function() {
-            const elm = $(this);
-            elm.css("font-size",GUIManager.convertPixelToPercentage(elm.css('height'), 'y')  + 'vh');
-            elm.css("width",    GUIManager.convertPixelToPercentage(elm.css('width'), 'x')      + '%');
-            elm.css("height",   GUIManager.convertPixelToPercentage(elm.css('height'), 'y')     + '%');
-            elm.css("left",     GUIManager.convertPixelToPercentage(elm.css('left'), 'x')       + '%');
-            elm.css("top",      GUIManager.convertPixelToPercentage(elm.css('top'), 'y')        + '%');
+class GUIStateLoad extends GUIState {
+    public onEnter(lastState: GUIState) {
+        super.onEnter(lastState);
+        //console.assert(lastState == null);
+        let dotCount = 3;
+        this.loadingDotInterval = setInterval(() => {
+            dotCount++;
+            if (dotCount > 3) dotCount = 1;
+            $('.txtLoadingDots').css("visibility", "hidden");
+            if (dotCount >= 1) $('#txtLoadingDots1').css("visibility", "visible");
+            if (dotCount >= 2) $('#txtLoadingDots2').css("visibility", "visible");
+            if (dotCount >= 3) $('#txtLoadingDots3').css("visibility", "visible");
+        }, 500);
+
+        ResourceLoader.getInstance().onEvent('loadingProgress', (ratioToAdd) => {
+            this.animationBarRatios.push(ratioToAdd);
+            if (!this.isAnimating)
+                this.updatePendingAnimations();
         });
-
-        $('#txtPlay').on('click', () => { this.replaceState(GUIState.Logo); });
-        $('#txtTutorial').on('click', () => { alert("UNIMPLEMENTED"); });
-        $('#txtPlayGame').on('click', () => { this.replaceState(GUIState.Ingame); });
-        $('#txtAbout').on('click', () => { alert("UNIMPLEMENTED"); });
-
-        this.pushState(GUIState.Load);
     }
-    private overlayDivs : Map<GUIState, any> = new Map([ 
-        [GUIState.Load,$('#divLoadingOverlay')], 
-        [GUIState.Logo,$('#divLogoOverlay')],
-        [GUIState.MainMenu,$('#divMenuOverlay')],
-        [GUIState.Ingame,$('#divInGameOverlay')]
-    ]);
-
-    public static convertPixelToPercentage(pixelValue: string|number, axis: string) : number {
-        return ((parseInt(pixelValue.toString().replace('px', '')) / (axis == 'x' ? GUIManager.REFERENCE_WIDTH : GUIManager.REFERENCE_HEIGHT)) * 100);
+    public onEnd() {
+        super.onEnd();
+        clearInterval(this.loadingDotInterval); this.loadingDotInterval = null;
     }
+    public getStateDiv() { return $('#divLoadingOverlay'); }
 
     private updatePendingAnimations() {
         if (this.animationBarRatios.length) {
             const barRatioToAdd = this.animationBarRatios.shift();
             this.isAnimating = true;
             anime({
-                targets: '#divLoadBottom',
+                targets: '#imgLoadBottom',
                 easing: 'linear',
-                duration: GUIManager.ANIMATION_TIME_MS * barRatioToAdd,
+                duration: GUIStateLoad.ANIMATION_TIME_MS * barRatioToAdd,
                 left: { value: '+=' + GUIManager.convertPixelToPercentage(928 * barRatioToAdd, 'x') + '%' },
                 complete: () => {
                     this.totalLoadedRatio += barRatioToAdd;
@@ -1701,16 +1628,147 @@ class GUIManager extends Observable {
         }
     }
 
-    private loadingDotInterval;
-
-    private static REFERENCE_WIDTH = 1920;
-    private static REFERENCE_HEIGHT = 1277;
-
     // loading state
     private static ANIMATION_TIME_MS : number = 2000;
     private animationBarRatios: Array<number> = [];
     private totalLoadedRatio: number = 0;
     private isAnimating: boolean = false;
+    private loadingDotInterval: number = 0;
+}
+class GUIStateLogo extends GUIState {
+    public onEnter(lastState: GUIState) {
+        super.onEnter(lastState);
+        //console.assert(lastState == GUIState.Load)
+        anime
+            .timeline({
+                easing: 'easeOutExpo',
+                duration: 750
+            })
+            .add({
+                targets: '#imgCompanyLogo',
+                left: GUIManager.convertPixelToPercentage(567, 'x')
+            })
+            .add({
+                targets: '#imgCompanyLogo',
+                left: GUIManager.convertPixelToPercentage(1920, 'x'),
+                delay: 2000,
+                complete: (anim) => { this.context.replaceState(this.context.STATE_MENU); }
+            });
+    }
+    public onEnd() { 
+        super.onEnd();
+    }
+    public getStateDiv() { return $('#divLogoOverlay'); }
+}
+class GUIStateMainMenu extends GUIState {
+    public onEnter(lastState: GUIState) {
+        super.onEnter(lastState);
+        //console.assert(lastState == GUIState.Logo || lastState == GUIState.Load);
+        anime({
+            targets: '#imgLogoText',
+            scale: 1.05,
+            loop: true,
+            duration: 500,
+            delay: 300,
+            direction: 'alternate',
+            easing: 'easeInOutSine'
+        });
+        anime({
+            targets: '#imgBackgroundTopLoopA',
+            left: GUIManager.convertPixelToPercentage(0, 'x'),
+            loop: true,
+            duration: 10000,
+            easing: 'linear'
+        });
+        anime({
+            targets: '#imgBackgroundTopLoopB',
+            left: GUIManager.convertPixelToPercentage(1920, 'x'),
+            loop: true,
+            duration: 10000,
+            easing: 'linear'
+        });
+    }
+    public onEnd() {
+        super.onEnd();
+    }
+    public getStateDiv() { return $('#divMenuOverlay'); }
+}
+class GUIStateInGame extends GUIState {
+    public onEnter(lastState: GUIState) {
+        super.onEnter(lastState);
+        //console.assert(lastState == GUIState.Logo);
+        game = new Game();
+        game.start();
+    }
+    public onEnd() {
+        super.onEnd();
+        game.dispose();
+    }
+    public getStateDiv() { return $('#divInGameOverlay'); }
+}
+
+class GUIManager extends Observable {
+    public static getInstance() : GUIManager { return this.instance; }
+    public static async LoadResources() {
+        //await ResourceLoader.getInstance().loadImageIntoContainer('test', 'https://raw.githubusercontent.com/lattesipper/endlessplatformer/master/resources/guitextures/tmpbackground.png', 0);
+    }
+    public pushState(newState: GUIState, replacedLastState: GUIState = null) {
+        console.assert(!this.currentStates.some(state => state == newState), "GUIManager: Attempted to push an already active state to the state list");
+        const lastState = replacedLastState || this.getCurrentState();
+        if (!replacedLastState && lastState)
+            lastState.onCoverStart(newState);
+        this.currentStates.push(newState);
+        newState.onEnter(lastState);
+        window.dispatchEvent(new Event('resize'));
+
+    }
+    public popState() {
+        const poppedState = this.currentStates.pop();
+        poppedState.onEnd();
+        const newCurrentState = this.getCurrentState();
+        if (newCurrentState)
+            newCurrentState.onCoverEnd();
+    }
+    public replaceState(newState: GUIState) {
+        const replacedState = this.getCurrentState();
+        if (this.currentStates.length)
+            this.popState();
+        this.pushState(newState, replacedState);
+    }
+    public getActiveStateCount() : number { return this.currentStates.length; }
+    private getCurrentState() : GUIState { return this.currentStates.length > 0 ? this.currentStates[this.currentStates.length - 1] : null; }
+    public constructor() {
+        super();
+
+        $('.makeRelative').each(function() {
+            const elm = $(this);
+            elm.css("font-size",GUIManager.convertPixelToPercentage(elm.css('height'), 'y')  + 'vh');
+            elm.css("width",    GUIManager.convertPixelToPercentage(elm.css('width'), 'x')      + '%');
+            elm.css("height",   GUIManager.convertPixelToPercentage(elm.css('height'), 'y')     + '%');
+            elm.css("left",     GUIManager.convertPixelToPercentage(elm.css('left'), 'x')       + '%');
+            elm.css("top",      GUIManager.convertPixelToPercentage(elm.css('top'), 'y')        + '%');
+        });
+
+        $('#txtPlay').on('click', () => { this.replaceState(this.STATE_LOGO); });
+        $('#txtTutorial').on('click', () => { alert("UNIMPLEMENTED"); });
+        $('#txtPlayGame').on('click', () => { this.replaceState(this.STATE_INGAME); });
+        $('#txtAbout').on('click', () => { alert("UNIMPLEMENTED"); });
+
+        this.pushState(this.STATE_LOAD);
+        //this.pushState(GUIManager.STATE_MENU);
+    }
+
+    public static convertPixelToPercentage(pixelValue: string|number, axis: string) : number {
+        return ((parseInt(pixelValue.toString().replace('px', '')) / (axis == 'x' ? GUIManager.REFERENCE_WIDTH : GUIManager.REFERENCE_HEIGHT)) * 100);
+    }
+
+    public STATE_LOAD = new GUIStateLoad(this);
+    public STATE_LOGO = new GUIStateLogo(this);
+    public STATE_MENU = new GUIStateMainMenu(this);
+    public STATE_INGAME = new GUIStateInGame(this);
+
+    private static REFERENCE_WIDTH = 1920;
+    private static REFERENCE_HEIGHT = 1277;
 
     private currentStates: Array<GUIState> = [];
     private static instance : GUIManager = new GUIManager();
