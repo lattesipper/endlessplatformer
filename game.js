@@ -7,7 +7,7 @@ var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, ge
         step((generator = generator.apply(thisArg, _arguments || [])).next());
     });
 };
-//import * as BABYLON from 'babylonjs';
+import * as BABYLON from 'babylonjs';
 window.addEventListener('DOMContentLoaded', () => {
     // Create canvas and engine.
     const canvas = (document.getElementById('renderCanvas'));
@@ -1695,22 +1695,25 @@ window.addEventListener('DOMContentLoaded', () => {
     class GUIStateMenuMain extends GUIState {
         constructor(context) {
             super(context);
-            $('#txtPlayGame').bind('click').on('click', () => {
+            $('#txtPlayGame').on('click', () => {
                 this.context.popState();
                 this.context.replaceState(this.context.STATE_INGAME);
             });
-            $('#txtTutorial').bind('click').on('click', () => {
+            $('#txtTutorial').on('click', () => {
                 this.context.popState();
                 this.context.replaceState(this.context.STATE_INGAME);
             });
-            $('#txtScores').bind('click').on('click', () => {
+            $('#txtScores').on('click', () => {
                 this.context.replaceState(this.context.STATE_MENUSCORES);
             });
-            $('#txtAbout').bind('click').on('click', () => {
+            $('#txtAbout').on('click', () => {
                 this.context.replaceState(this.context.STATE_MENUABOUT);
             });
-            $('#txtSettings').bind('click').on('click', () => {
+            $('#txtSettings').on('click', () => {
                 this.context.replaceState(this.context.STATE_MENUSETTINGS);
+            });
+            $('.txtMenuBack').on('click', () => {
+                this.context.replaceState(this.context.STATE_MENUMAIN);
             });
         }
         onEnter(lastState) {

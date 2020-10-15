@@ -1713,22 +1713,25 @@ class GUIStateMenu extends GUIState {
 class GUIStateMenuMain extends GUIState {
     public constructor(context: GUIManager) {
         super(context);
-        $('#txtPlayGame').bind('click').on('click', () => { 
+        $('#txtPlayGame').on('click', () => { 
             this.context.popState();
             this.context.replaceState(this.context.STATE_INGAME);  
         });
-        $('#txtTutorial').bind('click').on('click', () => { 
+        $('#txtTutorial').on('click', () => { 
             this.context.popState();
             this.context.replaceState(this.context.STATE_INGAME);  
         });
-        $('#txtScores').bind('click').on('click', () => { 
+        $('#txtScores').on('click', () => { 
             this.context.replaceState(this.context.STATE_MENUSCORES);  
         });
-        $('#txtAbout').bind('click').on('click', () => { 
+        $('#txtAbout').on('click', () => { 
             this.context.replaceState(this.context.STATE_MENUABOUT);  
         });
-        $('#txtSettings').bind('click').on('click', () => { 
+        $('#txtSettings').on('click', () => { 
             this.context.replaceState(this.context.STATE_MENUSETTINGS);  
+        });
+        $('.txtMenuBack').on('click', () => {
+            this.context.replaceState(this.context.STATE_MENUMAIN);
         });
     }
     public onEnter(lastState: GUIState) {
