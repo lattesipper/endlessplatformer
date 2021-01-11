@@ -7,7 +7,7 @@ var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, ge
         step((generator = generator.apply(thisArg, _arguments || [])).next());
     });
 };
-import * as BABYLON from 'babylonjs';
+//import * as BABYLON from 'babylonjs';
 window.addEventListener('DOMContentLoaded', () => {
     // Create canvas and engine.
     const canvas = (document.getElementById('renderCanvas'));
@@ -112,9 +112,8 @@ window.addEventListener('DOMContentLoaded', () => {
             const ratioToAdd = bytes / ResourceLoader.TOTAL_RESOURCES_SIZE_IN_BYTES;
             this.loadedRatio += ratioToAdd;
             this.fire('loadingProgress', ratioToAdd);
-            if (this.loadedRatio == 1) {
+            if (this.loadedRatio == 1)
                 this.finishLoading();
-            }
         }
         finishLoading() {
             BABYLON.Texture.prototype.constructor = ((...args) => { console.assert(false, "Attempted to load resource at runtime"); });
@@ -157,12 +156,6 @@ window.addEventListener('DOMContentLoaded', () => {
             return array;
         }
     }
-    let PoolType;
-    (function (PoolType) {
-        PoolType[PoolType["Instances"] = 0] = "Instances";
-        PoolType[PoolType["Cloning"] = 1] = "Cloning";
-        PoolType[PoolType["SolidParticle"] = 2] = "SolidParticle"; // unimplemented
-    })(PoolType || (PoolType = {}));
     class GameTimer {
         constructor() {
             this.running = false;
@@ -212,46 +205,42 @@ window.addEventListener('DOMContentLoaded', () => {
             this.instances = new Array(instanceCount);
             this.poolType = poolType;
         }
-        LoadResourcesFromPath(meshName, onMeshLoad = (mesh) => { }, sizeInBytes = 0) {
+        static FromResources(instanceCount, poolType, meshName, sizeInBytes = 0) {
             return __awaiter(this, void 0, void 0, function* () {
-                this.templateMesh = yield ResourceLoader.getInstance().loadMesh(meshName, sizeInBytes);
-                this.templateMesh.isVisible = false;
-                this.templateMesh.receiveShadows = true;
+                const meshPool = new MeshPool(instanceCount, poolType);
+                const loadedMesh = yield ResourceLoader.getInstance().loadMesh(meshName, sizeInBytes);
+                loadedMesh.isVisible = false;
+                loadedMesh.receiveShadows = true;
+                meshPool.populatePool(loadedMesh);
+                return meshPool;
+            });
+        }
+        static FromExisting(instanceCount, poolType, mesh, sizeInBytes = 0) {
+            return __awaiter(this, void 0, void 0, function* () {
+                const meshPool = new MeshPool(instanceCount, poolType);
+                mesh.isVisible = false;
+                mesh.receiveShadows = true;
+                meshPool.populatePool(mesh);
+                return meshPool;
+            });
+        }
+        populatePool(templateMesh) {
+            for (let i = 0; i < this.instances.length; i++) {
+                let instance;
                 switch (this.poolType) {
-                    case PoolType.Instances:
-                        for (let i = 0; i < this.instances.length; i++) {
-                            const instance = this.templateMesh.createInstance('');
-                            instance.isVisible = false;
-                            this.instances[i] = instance;
-                            onMeshLoad(this.instances[i]);
-                        }
+                    case MeshPool.POOLTYPE_INSTANCE:
+                        instance = templateMesh.createInstance('');
                         break;
-                    case PoolType.Cloning:
-                        for (let i = 0; i < this.instances.length; i++) {
-                            const instance = this.templateMesh.clone();
-                            instance.isVisible = false;
-                            this.instances[i] = instance;
-                            onMeshLoad(this.instances[i]);
-                        }
+                    case MeshPool.POOLTYPE_CLONE:
+                        instance = templateMesh.clone('');
                         break;
-                    case PoolType.SolidParticle:
+                    default:
                         console.assert(false);
                         break;
                 }
-            });
-        }
-        LoadResourcesFromMesh(mesh) {
-            return __awaiter(this, void 0, void 0, function* () {
-                yield new Promise((resolve) => {
-                    mesh.isVisible = false;
-                    for (let i = 0; i < this.instances.length; i++) {
-                        const instance = mesh.createInstance('');
-                        instance.isVisible = false;
-                        this.instances[i] = instance;
-                    }
-                    resolve();
-                });
-            });
+                instance.isVisible = false;
+                this.instances[i] = instance;
+            }
         }
         getMesh() {
             console.assert(this.instances.length > 0);
@@ -263,10 +252,10 @@ window.addEventListener('DOMContentLoaded', () => {
             instance.isVisible = false;
             this.instances.push(instance);
         }
-        getTemplateMesh() {
-            return this.templateMesh;
-        }
     }
+    MeshPool.POOLTYPE_INSTANCE = 0;
+    MeshPool.POOLTYPE_CLONE = 0;
+    MeshPool.POOLTYPE_SPS = 0;
     // Singleton input manager
     class InputManager extends Observable {
         constructor() {
@@ -295,42 +284,8 @@ window.addEventListener('DOMContentLoaded', () => {
             this.rotating = false;
             this.rotationIndex = 0;
             this.node = new BABYLON.TransformNode('', scene);
-            // use an arc-rotate camera
-            const camera = new BABYLON.ArcRotateCamera("Camera", 0, 0, 25, new BABYLON.Vector3(0, 0, 0), scene);
-            camera.setPosition(new BABYLON.Vector3(0, 0, 0));
-            camera.beta = 0.65;
-            camera.radius = 25;
-            camera.parent = this.node;
-            this.camera = camera;
-            scene.onBeforeRenderObservable.add(() => {
-                // wrap camera alpha
-                if (camera.alpha < 0) {
-                    camera.alpha = (Math.PI * 2) + camera.alpha;
-                }
-                else if (camera.alpha > (Math.PI * 2)) {
-                    camera.alpha = camera.alpha - (Math.PI * 2);
-                }
-                // rotate camera right 90 degrees
-                if (InputManager.getInstance().isKeyPressed('arrowright') && !this.rotating && !game.isPaused()) {
-                    var animationBox = new BABYLON.Animation("myAnimation", "alpha", 60, BABYLON.Animation.ANIMATIONTYPE_FLOAT, BABYLON.Animation.ANIMATIONLOOPMODE_CONSTANT);
-                    animationBox.setKeys([{ frame: 0, value: camera.alpha }, { frame: 20, value: camera.alpha + (Math.PI / 2) }]);
-                    camera.animations = [animationBox];
-                    scene.beginAnimation(camera, 0, 20, false, 1, () => { this.rotating = false; game.play(); this.rotationIndex = (this.rotationIndex == 3 ? 0 : this.rotationIndex + 1); });
-                    this.rotating = true;
-                    game.pause();
-                    GameCamera.rotateSound.play();
-                }
-                // rotate camera left 90 degrees
-                else if (InputManager.getInstance().isKeyPressed('arrowleft') && !this.rotating && !game.isPaused()) {
-                    var animationBox = new BABYLON.Animation("myAnimation2", "alpha", 60, BABYLON.Animation.ANIMATIONTYPE_FLOAT, BABYLON.Animation.ANIMATIONLOOPMODE_CONSTANT);
-                    animationBox.setKeys([{ frame: 0, value: camera.alpha }, { frame: 20, value: camera.alpha - (Math.PI / 2) }]);
-                    camera.animations = [animationBox];
-                    scene.beginAnimation(camera, 0, 20, false, 1, () => { this.rotating = false; game.play(); this.rotationIndex = (this.rotationIndex == 0 ? 3 : this.rotationIndex - 1); });
-                    game.pause();
-                    this.rotating = true;
-                    GameCamera.rotateSound.play();
-                }
-            });
+            this.setupCamera();
+            this.setupRotateKeyListener();
         }
         static LoadResources() {
             return __awaiter(this, void 0, void 0, function* () {
@@ -339,10 +294,41 @@ window.addEventListener('DOMContentLoaded', () => {
         }
         setY(y) { this.node.position.y = y; }
         getY() { return this.node.position.y; }
-        setAlpha(alpha) { this.camera.alpha = alpha; }
-        setBeta(beta) { this.camera.beta = beta; }
-        setRadius(radius) { this.camera.radius = radius; }
-        getAlpha() { return this.camera.alpha; }
+        setupRotateKeyListener() {
+            scene.onBeforeRenderObservable.add(() => {
+                const canRotate = !this.rotating && game && !game.isPaused();
+                const rotateRight = InputManager.getInstance().isKeyPressed('arrowright');
+                const rotateLeft = InputManager.getInstance().isKeyPressed('arrowleft');
+                if ((rotateLeft || rotateRight) && canRotate) {
+                    const animationBox = new BABYLON.Animation("myAnimation", "alpha", 60, BABYLON.Animation.ANIMATIONTYPE_FLOAT, BABYLON.Animation.ANIMATIONLOOPMODE_CONSTANT);
+                    animationBox.setKeys([{ frame: 0, value: this.camera.alpha }, { frame: 20, value: this.camera.alpha + (Math.PI / 2) * (rotateRight ? 1 : -1) }]);
+                    this.camera.animations = [animationBox];
+                    scene.beginAnimation(this.camera, 0, 20, false, 1, () => this.onRotationEnd(rotateRight));
+                    this.onRotationStart();
+                }
+            });
+        }
+        setupCamera() {
+            const camera = new BABYLON.ArcRotateCamera("Camera", 0, 0, 25, new BABYLON.Vector3(0, 0, 0), scene);
+            camera.setPosition(new BABYLON.Vector3(0, 0, 0));
+            camera.beta = 0.65;
+            camera.radius = 25;
+            camera.parent = this.node;
+            this.camera = camera;
+        }
+        onRotationStart() {
+            game.pause();
+            this.rotating = true;
+            GameCamera.rotateSound.play();
+        }
+        onRotationEnd(rotatedRight) {
+            game.play();
+            this.rotating = false;
+            if (rotatedRight)
+                this.rotationIndex = (this.rotationIndex == 3 ? 0 : this.rotationIndex + 1);
+            else
+                this.rotationIndex = (this.rotationIndex == 0 ? 3 : this.rotationIndex - 1);
+        }
         getRotationIndex() { return this.rotationIndex; }
         resetRotationindex() {
             this.rotationIndex = 0;
@@ -498,8 +484,6 @@ window.addEventListener('DOMContentLoaded', () => {
             // Game.BACKGROUND_MUSIC.setVolume(0.5);
             //Game.BACKGROUND_MUSIC.play();
             camera.resetRotationindex();
-            camera.setBeta(0.65);
-            camera.setRadius(25);
         }
         addPhysBox(box) { this.physBoxesSortedY.push(box); this.physBoxToYIndex.set(box, this.getClosestYIndex(box.getPos().y)); }
         getPhysObjects() { return this.physBoxesSortedY; }
@@ -518,8 +502,6 @@ window.addEventListener('DOMContentLoaded', () => {
                     //gameOverContainer.isVisible = true;
                     // reset camera position to the start of the level, and orientate to side
                     camera.setY(0);
-                    camera.setBeta(Math.PI / 2);
-                    camera.setRadius(50);
                     // reset lava position to the beginning
                     this.lava.position.y = -15;
                     // start the drumroll as the spectator camera moves up
@@ -1013,133 +995,6 @@ window.addEventListener('DOMContentLoaded', () => {
             return fallbox;
         }
     }
-    // enum BoulderState {
-    //     Waiting,
-    //     GoingUp,
-    //     GoingDown
-    // }
-    // class Boulder extends PhysBox {
-    //     public getMeshPool() : MeshPool { return Boulder.MESH_POOL; }
-    //     public static async LoadResouces() {
-    //         const obj = BABYLON.MeshBuilder.CreateSphere('', {diameter: 3}, scene);
-    //         const material = new BABYLON.StandardMaterial('', scene);
-    //         material.diffuseTexture = new BABYLON.Texture('https://cdnb.artstation.com/p/assets/images/images/010/604/427/large/nick-rossi-gam322-nrossi-m11-lava.jpg', scene);
-    //         material.disableLighting = true;
-    //         material.emissiveColor = new BABYLON.Color3(1,1,1);
-    //         obj.material = material;
-    //         await Boulder.MESH_POOL.LoadResourcesFromMesh(obj);
-    //     }
-    //     public startObservation() {
-    //         super.startObservation(); 
-    //         this.smokeSystem.emitter = this.getMeshInstance();
-    //         this.fireSystem.emitter = this.getMeshInstance();
-    //     }
-    //     public endObservation() {
-    //         super.endObservation(); 
-    //         this.smokeSystem.emitter = null;
-    //         this.fireSystem.emitter = null;
-    //     }
-    //     public constructor() {
-    //         super();
-    //         this.setTerminalVelocity(0.3); 
-    //         this.setNormalizedSize(new BABYLON.Vector3(3,3,3));
-    //         this.setCollisionGroup(CollisionGroups.FloatEnemy);
-    //         //Smoke
-    //         var smokeSystem = new BABYLON.ParticleSystem("particles", 1000, scene);
-    //         smokeSystem.particleTexture = new BABYLON.Texture("https://raw.githubusercontent.com/lattesipper/endlessplatformer/master/resources/images/flare.png", scene);
-    //         //smokeSystem.emitter = obj; // the starting object, the emitter
-    //         smokeSystem.minEmitBox = new BABYLON.Vector3(-0.75, 0, -0.75); // Starting all from
-    //         smokeSystem.maxEmitBox = new BABYLON.Vector3(1, 0, 1); // To...
-    //         smokeSystem.color1 = new BABYLON.Color4(0.02, 0.02, 0.02, .02);
-    //         smokeSystem.color2 = new BABYLON.Color4(0.02, 0.02, 0.02, .02);
-    //         smokeSystem.colorDead = new BABYLON.Color4(0, 0, 0, 0.0);
-    //         smokeSystem.minSize = 1;
-    //         smokeSystem.maxSize = 3;
-    //         smokeSystem.minLifeTime = 0.3;
-    //         smokeSystem.maxLifeTime = 1.5;
-    //         smokeSystem.emitRate = 700;
-    //         smokeSystem.blendMode = BABYLON.ParticleSystem.BLENDMODE_ONEONE;
-    //         smokeSystem.gravity = new BABYLON.Vector3(0, 0, 0);
-    //         smokeSystem.direction1 = new BABYLON.Vector3(-1.5, -1 + Math.random(), -1.5);
-    //         smokeSystem.direction2 = new BABYLON.Vector3(1.5, -1 + Math.random(), 1.5);
-    //         smokeSystem.minAngularSpeed = 0;
-    //         smokeSystem.maxAngularSpeed = Math.PI;
-    //         smokeSystem.minEmitPower = 0.5;
-    //         smokeSystem.maxEmitPower = 1.5;
-    //         smokeSystem.updateSpeed = 0.005;
-    //         var fireSystem = new BABYLON.ParticleSystem("particles", 2000, scene);
-    //         fireSystem.particleTexture = new BABYLON.Texture("https://raw.githubusercontent.com/lattesipper/endlessplatformer/master/resources/images/flare.png", scene);
-    //         //fireSystem.emitter = obj; // the starting object, the emitter
-    //         fireSystem.minEmitBox = new BABYLON.Vector3(-1, 0, -1); // Starting all from
-    //         fireSystem.maxEmitBox = new BABYLON.Vector3(1, 0, 1); // To...
-    //         fireSystem.color1 = new BABYLON.Color4(1, 0.5, 0, 1.0);
-    //         fireSystem.color2 = new BABYLON.Color4(1, 0.5, 0, 1.0);
-    //         fireSystem.colorDead = new BABYLON.Color4(0, 0, 0, 0.0);
-    //         fireSystem.minSize = 0.3;
-    //         fireSystem.maxSize = 1;
-    //         fireSystem.minLifeTime = 0.2;
-    //         fireSystem.maxLifeTime = 0.4;
-    //         fireSystem.emitRate = 1200;
-    //         fireSystem.blendMode = BABYLON.ParticleSystem.BLENDMODE_ONEONE;
-    //         fireSystem.gravity = new BABYLON.Vector3(0, 0, 0);
-    //         fireSystem.direction1 = new BABYLON.Vector3(0, -1 + Math.random(), 0);
-    //         fireSystem.direction2 = new BABYLON.Vector3(0, -1 + Math.random(), 0);
-    //         fireSystem.minAngularSpeed = 0;
-    //         fireSystem.maxAngularSpeed = Math.PI;
-    //         fireSystem.minEmitPower = 1;
-    //         fireSystem.maxEmitPower = 3;
-    //         fireSystem.updateSpeed = 0.007;
-    //         this.smokeSystem = smokeSystem;
-    //         this.fireSystem = fireSystem;
-    //         //this.obj.isVisible = false;
-    //         this.disable();
-    //     }
-    //     public dispose() {
-    //         super.dispose();
-    //         this.smokeSystem.dispose();
-    //         this.fireSystem.dispose();
-    //     }
-    //     public launch() : boolean {
-    //         if (this.myState != BoulderState.Waiting)
-    //             return false;
-    //         this.enable();
-    //         this.setGravity(0);
-    //         this.setPos(new BABYLON.Vector3(-5 + Math.random() * 10, game.getLavaLevel() - 30, -5 + Math.random() * 10));
-    //         this.setVelocity(new BABYLON.Vector3(0, 0.3, 0));
-    //         this.smokeSystem.start();
-    //         this.fireSystem.start();
-    //         this.myState = BoulderState.GoingUp;
-    //         //this.obj.isVisible = true;
-    //         return true;
-    //     }
-    //     public afterCollisions(deltaT: number) {
-    //         super.afterCollisions(deltaT);
-    //         switch(this.myState) {
-    //             case BoulderState.Waiting:
-    //                 this.getPos().y = game.getLavaLevel() - 30;
-    //                 break;
-    //             case BoulderState.GoingUp:
-    //                 if ((this.getPos().y > game.getPlayer().getPos().y + 10)) {
-    //                     this.setGravity(0.01);
-    //                     this.myState = BoulderState.GoingDown;
-    //                 }
-    //                 break;
-    //             case BoulderState.GoingDown:
-    //                 if (this.getPos().y < (game.getLavaLevel() - 30)) {
-    //                     this.myState = BoulderState.Waiting;
-    //                     this.smokeSystem.stop();
-    //                     this.fireSystem.stop();
-    //                     //this.obj.isVisible = false;
-    //                     this.disable();
-    //                 }
-    //                 break;
-    //         }
-    //     }
-    //     private smokeSystem: BABYLON.ParticleSystem;
-    //     private fireSystem: BABYLON.ParticleSystem;
-    //     private myState: BoulderState = BoulderState.Waiting;
-    //     private static MESH_POOL: MeshPool = new MeshPool(10, PoolType.Instances);
-    // }
     class FloorBox extends PhysBox {
         constructor() {
             super();
@@ -1154,12 +1009,11 @@ window.addEventListener('DOMContentLoaded', () => {
                 material.diffuseTexture = yield ResourceLoader.getInstance().loadTexture("floorBox.png", 7415);
                 material.freeze();
                 mesh.material = material;
-                yield this.MESH_POOL.LoadResourcesFromMesh(mesh);
+                this.MESH_POOL = yield MeshPool.FromExisting(1, MeshPool.POOLTYPE_INSTANCE, mesh, 0);
             });
         }
         getMeshPool() { return FloorBox.MESH_POOL; }
     }
-    FloorBox.MESH_POOL = new MeshPool(1, PoolType.Instances);
     class BoxingRingBottom extends PhysBox {
         constructor() {
             super();
@@ -1170,14 +1024,11 @@ window.addEventListener('DOMContentLoaded', () => {
         }
         static LoadResources() {
             return __awaiter(this, void 0, void 0, function* () {
-                yield BoxingRingBottom.MESH_POOL.LoadResourcesFromPath('boxingringbottom.obj', (mesh) => {
-                    mesh.visibility = 0.5;
-                }, 254548);
+                this.MESH_POOL = yield MeshPool.FromResources(3, MeshPool.POOLTYPE_CLONE, 'boxingringbottom.obj', 254548);
             });
         }
         getMeshPool() { return BoxingRingBottom.MESH_POOL; }
     }
-    BoxingRingBottom.MESH_POOL = new MeshPool(3, PoolType.Cloning);
     class BoxingRingTop extends PhysBox {
         constructor() {
             super();
@@ -1188,14 +1039,11 @@ window.addEventListener('DOMContentLoaded', () => {
         }
         static LoadResources() {
             return __awaiter(this, void 0, void 0, function* () {
-                yield BoxingRingTop.MESH_POOL.LoadResourcesFromPath('boxingringtop.obj', (mesh) => {
-                    //mesh.visibility = 0.5;  
-                }, 3145633);
+                this.MESH_POOL = yield MeshPool.FromResources(3, MeshPool.POOLTYPE_CLONE, 'boxingringbottom.obj', 3145633);
             });
         }
         getMeshPool() { return BoxingRingTop.MESH_POOL; }
     }
-    BoxingRingTop.MESH_POOL = new MeshPool(3, PoolType.Cloning);
     class Coin extends PhysBox {
         constructor() {
             super();
@@ -1204,8 +1052,8 @@ window.addEventListener('DOMContentLoaded', () => {
         }
         static LoadResources() {
             return __awaiter(this, void 0, void 0, function* () {
-                Coin.SOUND_COIN = yield ResourceLoader.getInstance().loadSound("coinCollect.wav", 31074);
-                yield Coin.MESH_POOL.LoadResourcesFromPath('coin.obj', () => { }, 6216);
+                this.SOUND_COIN = yield ResourceLoader.getInstance().loadSound("coinCollect.wav", 31074);
+                this.MESH_POOL = yield MeshPool.FromResources(50, MeshPool.POOLTYPE_INSTANCE, 'coin.obj', 6216);
             });
         }
         static getYRotation() { return (t / 60) * (Math.PI * 2) * this.REVS_PER_SECOND; }
@@ -1231,7 +1079,6 @@ window.addEventListener('DOMContentLoaded', () => {
             }
         }
     }
-    Coin.MESH_POOL = new MeshPool(50, PoolType.Instances);
     Coin.REVS_PER_SECOND = 0.5;
     class FallBox extends PhysBox {
         constructor() {
@@ -1266,14 +1113,13 @@ window.addEventListener('DOMContentLoaded', () => {
         }
         static LoadResources() {
             return __awaiter(this, void 0, void 0, function* () {
-                yield FallBoxBasic.MESH_POOL.LoadResourcesFromPath('basicbox.obj', () => { }, 397646);
+                this.MESH_POOL = yield MeshPool.FromResources(300, MeshPool.POOLTYPE_INSTANCE, 'basicbox.obj', 397646);
             });
         }
         getMeshPool() {
             return FallBoxBasic.MESH_POOL;
         }
     }
-    FallBoxBasic.MESH_POOL = new MeshPool(300, PoolType.Instances);
     class Player extends PhysBox {
         constructor() {
             super();
@@ -1315,7 +1161,7 @@ window.addEventListener('DOMContentLoaded', () => {
                 Player.SOUND_JUMP = yield ResourceLoader.getInstance().loadSound("jump.wav", 9928);
                 Player.SOUND_HIT_HEAD = yield ResourceLoader.getInstance().loadSound("hitHead.wav", 8418);
                 Player.SOUND_DEATH = yield ResourceLoader.getInstance().loadSound("death.wav", 138110);
-                yield Player.MESH_POOL.LoadResourcesFromPath('player.obj', () => { }, 7654);
+                Player.MESH_POOL = yield MeshPool.FromResources(2, MeshPool.POOLTYPE_CLONE, 'player.obj', 7654);
             });
         }
         getMeshPool() { return Player.MESH_POOL; }
@@ -1546,7 +1392,6 @@ window.addEventListener('DOMContentLoaded', () => {
     Player.MAX_Y_SPEED = 0.5;
     Player.GRAVITY_DELAY_TIME_IN_SECONDS = 0.2;
     Player.INVULNERABILITY_DELAY_TIME_IN_SECONDS = 2;
-    Player.MESH_POOL = new MeshPool(2, PoolType.Cloning);
     class GUIState {
         constructor(context) { this.context = context; }
         onEnter(lastState) {
