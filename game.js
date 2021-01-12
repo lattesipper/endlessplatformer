@@ -8,6 +8,7 @@ var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, ge
     });
 };
 //import * as BABYLON from 'babylonjs';
+//import * as BABYLON_MATERIALS from 'babylonjs-materials';
 window.addEventListener('DOMContentLoaded', () => {
     // Create canvas and engine.
     const canvas = (document.getElementById('renderCanvas'));
@@ -38,24 +39,23 @@ window.addEventListener('DOMContentLoaded', () => {
     let game;
     let t = 0;
     // Observable object that fires events
-    class Observable {
+    class NamedEvent {
         constructor() {
-            this.subscribers = new Map();
+            this.subscribers = new Set();
         }
-        onEvent(eventName, callback) {
-            if (!this.subscribers.has(eventName))
-                this.subscribers.set(eventName, new Set());
-            this.subscribers.get(eventName).add(callback);
-            return () => this.subscribers.get(eventName).delete(callback);
+        addListener(callback, caller = null) {
+            this.subscribers.add(callback);
+            if (caller)
+                caller.onDispose.addListener(() => this.subscribers.delete(callback));
         }
-        fire(eventName, ...args) {
-            if (this.subscribers.has(eventName))
-                this.subscribers.get(eventName).forEach(callback => callback(...args));
+        fire(...args) {
+            this.subscribers.forEach(callback => callback(...args));
         }
     }
-    class ResourceLoader extends Observable {
+    class ResourceLoader {
         constructor() {
-            super(...arguments);
+            this.onLoadingProgress = new NamedEvent();
+            this.onLoadingFinish = new NamedEvent();
             this.loadedRatio = 0;
         }
         static getInstance() { return this.instance; }
@@ -111,7 +111,7 @@ window.addEventListener('DOMContentLoaded', () => {
         updateLoadedBytes(bytes) {
             const ratioToAdd = bytes / ResourceLoader.TOTAL_RESOURCES_SIZE_IN_BYTES;
             this.loadedRatio += ratioToAdd;
-            this.fire('loadingProgress', ratioToAdd);
+            this.onLoadingProgress.fire(ratioToAdd);
             if (this.loadedRatio == 1)
                 this.finishLoading();
         }
@@ -119,7 +119,7 @@ window.addEventListener('DOMContentLoaded', () => {
             BABYLON.Texture.prototype.constructor = ((...args) => { console.assert(false, "Attempted to load resource at runtime"); });
             BABYLON.Sound.prototype.constructor = ((...args) => { console.assert(false, "Attempted to load resource at runtime"); });
             BABYLON.SceneLoader.ImportMesh = ((...args) => { console.assert(false, "Attempted to load resource at runtime"); });
-            this.fire('loadingFinish');
+            this.onLoadingFinish.fire();
         }
     }
     ResourceLoader.instance = new ResourceLoader();
@@ -257,20 +257,24 @@ window.addEventListener('DOMContentLoaded', () => {
     MeshPool.POOLTYPE_CLONE = 0;
     MeshPool.POOLTYPE_SPS = 0;
     // Singleton input manager
-    class InputManager extends Observable {
+    class InputManager {
         constructor() {
-            super();
+            this.onKeyDown = new NamedEvent();
+            this.onKeyUp = new NamedEvent();
             this.inputMap = new Map();
+            this.registerActions();
+        }
+        registerActions() {
             scene.actionManager = new BABYLON.ActionManager(scene);
             scene.actionManager.registerAction(new BABYLON.ExecuteCodeAction(BABYLON.ActionManager.OnKeyDownTrigger, (evt) => {
                 const key = evt.sourceEvent.key.toLowerCase();
                 this.inputMap.set(key, true);
-                this.fire('keyDown', key);
+                this.onKeyDown.fire(key);
             }));
             scene.actionManager.registerAction(new BABYLON.ExecuteCodeAction(BABYLON.ActionManager.OnKeyUpTrigger, (evt) => {
                 const key = evt.sourceEvent.key.toLowerCase();
                 this.inputMap.set(key, false);
-                this.fire('keyUp', key);
+                this.onKeyUp.fire(key);
             }));
         }
         static getInstance() { return this.instance; }
@@ -294,6 +298,14 @@ window.addEventListener('DOMContentLoaded', () => {
         }
         setY(y) { this.node.position.y = y; }
         getY() { return this.node.position.y; }
+        setupCamera() {
+            const camera = new BABYLON.ArcRotateCamera("Camera", 0, 0, 25, new BABYLON.Vector3(0, 0, 0), scene);
+            camera.setPosition(new BABYLON.Vector3(0, 0, 0));
+            camera.beta = 0.65;
+            camera.radius = 25;
+            camera.parent = this.node;
+            this.camera = camera;
+        }
         setupRotateKeyListener() {
             scene.onBeforeRenderObservable.add(() => {
                 const canRotate = !this.rotating && game && !game.isPaused();
@@ -307,14 +319,6 @@ window.addEventListener('DOMContentLoaded', () => {
                     this.onRotationStart();
                 }
             });
-        }
-        setupCamera() {
-            const camera = new BABYLON.ArcRotateCamera("Camera", 0, 0, 25, new BABYLON.Vector3(0, 0, 0), scene);
-            camera.setPosition(new BABYLON.Vector3(0, 0, 0));
-            camera.beta = 0.65;
-            camera.radius = 25;
-            camera.parent = this.node;
-            this.camera = camera;
         }
         onRotationStart() {
             game.pause();
@@ -363,25 +367,108 @@ window.addEventListener('DOMContentLoaded', () => {
     Sides.Unknown = new Sides('', 0);
     Sides.All = [Sides.Left, Sides.Right, Sides.Forward, Sides.Back, Sides.Top, Sides.Bottom];
     // Game class, responsible for managing contained phys-objects
-    let GameMode;
-    (function (GameMode) {
-        GameMode[GameMode["Playing"] = 0] = "Playing";
-        GameMode[GameMode["Spectating"] = 1] = "Spectating";
-        GameMode[GameMode["Paused"] = 2] = "Paused";
-    })(GameMode || (GameMode = {}));
+    class GameState {
+        constructor(context) {
+            this.onDispose = new NamedEvent();
+            this.context = context;
+        }
+        dispose() { this.onDispose.fire(); }
+    }
+    class GameStandard extends GameState {
+        constructor(context) {
+            super(context);
+            this.spectateDelayTimer = new GameTimer();
+            this.canPause = true;
+            this.currentLevel = new StartLevel();
+            // setup pause callback
+            InputManager.getInstance().onKeyDown.addListener((key) => {
+                switch (key) {
+                    case 'p':
+                        if (!this.canPause)
+                            break;
+                        if (!this.context.isPaused()) {
+                            //Game.BACKGROUND_MUSIC.pause();
+                            //pauseContainer.isVisible = true;
+                            this.context.pause();
+                            GameStandard.SOUND_PAUSE_IN.play();
+                        }
+                        else {
+                            //Game.BACKGROUND_MUSIC.play();
+                            //pauseContainer.isVisible = false;
+                            this.context.play();
+                            GameStandard.SOUND_PAUSE_OUT.play();
+                        }
+                        break;
+                }
+            }, this);
+            this.context.getPlayer().onDeath.addListener(() => {
+                //UtilityFunctions.fadeOutSound(Game.BACKGROUND_MUSIC, 1);
+                this.canPause = false;
+                this.spectateDelayTimer.start(() => this.context.setState(new GameOver(this.context)), GameStandard.DEATH_SPECTATE_DELAY, false);
+            }, this);
+        }
+        static LoadResouces() {
+            return __awaiter(this, void 0, void 0, function* () {
+                GameStandard.SOUND_PAUSE_IN = yield ResourceLoader.getInstance().loadSound("pauseIn.wav", 23028);
+                GameStandard.SOUND_PAUSE_OUT = yield ResourceLoader.getInstance().loadSound("pauseOut.wav", 22988);
+            });
+        }
+        update(deltaT) {
+            const lavaSpeed = ((this.context.getPlayer().getPos().y - this.context.getLava().position.y) < GameStandard.PLAYER_DISTANCE_FOR_FAST_LAVA) ?
+                GameStandard.LAVA_SPEED_STANDARD :
+                GameStandard.LAVA_SPEED_FAST;
+            this.context.getLava().position.y += lavaSpeed;
+            this.currentLevel.update(deltaT);
+            this.spectateDelayTimer.update(deltaT);
+        }
+    }
+    GameStandard.DEATH_SPECTATE_DELAY = 3;
+    GameStandard.PLAYER_DISTANCE_FOR_FAST_LAVA = 60;
+    GameStandard.LAVA_SPEED_STANDARD = 0.0275;
+    GameStandard.LAVA_SPEED_FAST = 0.1;
+    class GameOver extends GameState {
+        constructor(context) {
+            super(context);
+            this.towerFlyByComplte = false;
+            camera.setY(0);
+            this.context.getLava().position.y = -15;
+            GameOver.SOUND_DRUMROLL_REPEAT.play();
+        }
+        static LoadResouces() {
+            return __awaiter(this, void 0, void 0, function* () {
+                GameOver.SOUND_DRUMROLL_REPEAT = yield ResourceLoader.getInstance().loadSound("drumroll.mp3", 972077);
+                GameOver.SOUND_DRUMROLL_STOP = yield ResourceLoader.getInstance().loadSound("drumrollStop.mp3", 25311);
+            });
+        }
+        dispose() {
+            GameOver.SOUND_DRUMROLL_REPEAT.stop();
+            GameOver.SOUND_DRUMROLL_STOP.stop();
+        }
+        update(deltaT) {
+            if (!this.towerFlyByComplte) {
+                const slowDownY = this.context.getPlayer().getPos().y - 32.256000000000014;
+                if (camera.getY() < 32.256000000000014) {
+                    this.cameraSpeed += 0.016;
+                }
+                else if (camera.getY() > slowDownY) {
+                    this.cameraSpeed -= 0.016;
+                }
+                camera.setY(camera.getY() + this.cameraSpeed);
+                if (this.cameraSpeed <= 0 || (camera.getY() >= this.context.getPlayer().getPos().y)) {
+                    this.finishTowerFlyBy();
+                }
+            }
+        }
+        finishTowerFlyBy() {
+            this.towerFlyByComplte = true;
+            GameOver.SOUND_DRUMROLL_REPEAT.stop();
+            GameOver.SOUND_DRUMROLL_STOP.play();
+        }
+    }
     class Game {
         constructor() {
-            this.mode = GameMode.Playing;
-            // shared mode variables
-            this.canPause = true;
+            this.onDispose = new NamedEvent();
             this.running = true;
-            // playing mode variables
-            this.currentLevel = null;
-            // spectate mode variables
-            this.spectateDelayTimer = new GameTimer();
-            this.towerFlyByComplte = false;
-            this.cameraSpeed = 0;
-            this.callbackFunctions = [];
             // sorted entities
             this.physBoxesSortedY = [];
             this.physBoxToYIndex = new Map();
@@ -394,10 +481,6 @@ window.addEventListener('DOMContentLoaded', () => {
                 // load sounds
                 //Game.BACKGROUND_MUSIC = await ResourceLoader.getInstance().loadSound("https://raw.githubusercontent.com/lattesipper/endlessplatformer/master/resources/music/dreamsofabove.mp3");
                 //Game.BACKGROUND_MUSIC.loop = true;
-                Game.SOUND_PAUSE_IN = yield ResourceLoader.getInstance().loadSound("pauseIn.wav", 23028);
-                Game.SOUND_PAUSE_OUT = yield ResourceLoader.getInstance().loadSound("pauseOut.wav", 22988);
-                Game.SOUND_DRUMROLL_REPEAT = yield ResourceLoader.getInstance().loadSound("drumroll.mp3", 972077);
-                Game.SOUND_DRUMROLL_STOP = yield ResourceLoader.getInstance().loadSound("drumrollStop.mp3", 25311);
                 // load lava mesh
                 const lava = BABYLON.Mesh.CreateGround("ground", 150, 150, 25, scene);
                 lava.visibility = 0.5;
@@ -411,51 +494,21 @@ window.addEventListener('DOMContentLoaded', () => {
                 lavaMaterial.freeze();
                 lava.material = lavaMaterial;
                 lava.isVisible = false;
-                lavaMaterial.blendMode = BABYLON.Engine.ALPHA_MULTIPLY;
+                //lavaMaterial.blendMode = BABYLON.Engine.ALPHA_MULTIPLY;
                 Game.MESH_LAVA = lava;
+                yield Promise.all([
+                    GameStandard.LoadResouces(),
+                    GameOver.LoadResouces()
+                ]);
             });
         }
         dispose() {
-            Game.SOUND_DRUMROLL_REPEAT.stop();
-            //Game.BACKGROUND_MUSIC.stop();
-            scene.onBeforeRenderObservable.removeCallback(this.updateCallbackFunc);
+            this.onDispose.fire();
+            clearInterval(this.updateInterval);
             this.physBoxesSortedY.forEach((physBox) => physBox.dispose());
             this.lava.dispose();
-            this.callbackFunctions.forEach((func) => func());
         }
-        getLavaLevel() { return this.lava.position.y - 1; }
-        pause() { this.running = false; }
-        play() { this.running = true; }
-        isPaused() { return !this.running; }
-        start() {
-            // setup update callback
-            this.updateCallbackFunc = (() => this.update(1 / 60));
-            scene.onBeforeRenderObservable.add(this.updateCallbackFunc);
-            // setup pause callback
-            this.callbackFunctions.push(InputManager.getInstance().onEvent('keyDown', (key) => {
-                if (this.canPause) {
-                    switch (key) {
-                        case 'p':
-                            if (this.running) {
-                                //Game.BACKGROUND_MUSIC.pause();
-                                //pauseContainer.isVisible = true;
-                                this.running = false;
-                                Game.SOUND_PAUSE_IN.play();
-                            }
-                            else {
-                                //Game.BACKGROUND_MUSIC.play();
-                                //pauseContainer.isVisible = false;
-                                this.running = true;
-                                Game.SOUND_PAUSE_OUT.play();
-                            }
-                            break;
-                        case 'space':
-                            if (this.mode == GameMode.Spectating && !this.towerFlyByComplte) {
-                                this.finishTowerFlyBy();
-                            }
-                    }
-                }
-            }));
+        createStartingEntities() {
             // create lava
             this.lava = Game.MESH_LAVA.createInstance('');
             // create frozen box at the bottom to catch them all
@@ -464,66 +517,51 @@ window.addEventListener('DOMContentLoaded', () => {
                 .freeze()
                 .setPos(new BABYLON.Vector3(0, 0, 0));
             this.addPhysBox(bottomBox);
-            // all is ready, create the player
+            // create the player
             const player = new Player();
             player.setPos(new BABYLON.Vector3(0, 0, 0));
             player.setSide(Sides.Bottom, bottomBox.getSide(Sides.Top) + 0.5);
             this.addPhysBox(player);
-            this.callbackFunctions.push(player.onEvent('death', () => {
-                //UtilityFunctions.fadeOutSound(Game.BACKGROUND_MUSIC, 1);
-                this.canPause = false;
-                this.spectateDelayTimer.start(() => this.changeMode(GameMode.Spectating), Game.DEATH_SPECTATE_DELAY, false);
-            }));
             this.player = player;
+        }
+        getLavaLevel() { return this.lava.position.y - 1; }
+        pause() { this.running = false; }
+        play() { this.running = true; }
+        isPaused() { return !this.running; }
+        start() {
+            // setup update callback
+            const updateDelta = 1 / Game.UPDATE_FREQUENCY_PER_SECOND;
+            this.updateInterval = setInterval(() => {
+                this.update(updateDelta);
+            }, 1000 / Game.UPDATE_FREQUENCY_PER_SECOND);
+            // create initial entities
+            this.createStartingEntities();
+            // set state to start with standard gameplay
+            this.currentState = new GameStandard(this);
+            // perform initial sorting of boxes
             this.ySortBoxes();
-            // create initial cube cluster
-            this.currentLevel = new StartLevel();
-            // play background music
-            //Game.BACKGROUND_MUSIC.loop = true;
-            //Game.BACKGROUND_MUSIC.setVolume(0); // FINDME
-            // Game.BACKGROUND_MUSIC.setVolume(0.5);
-            //Game.BACKGROUND_MUSIC.play();
             camera.resetRotationindex();
         }
         addPhysBox(box) { this.physBoxesSortedY.push(box); this.physBoxToYIndex.set(box, this.getClosestYIndex(box.getPos().y)); }
         getPhysObjects() { return this.physBoxesSortedY; }
         getPlayer() { return this.player; }
-        changeMode(mode) {
-            switch (mode) {
-                case GameMode.Playing:
-                    // show only the gameplay container
-                    //gameOverContainer.isVisible = false;
-                    //gameplayContainer.isVisible = true;
-                    break;
-                case GameMode.Spectating:
-                    console.assert(this.mode == GameMode.Playing);
-                    // show only the game over container
-                    //gameplayContainer.isVisible = false;
-                    //gameOverContainer.isVisible = true;
-                    // reset camera position to the start of the level, and orientate to side
-                    camera.setY(0);
-                    // reset lava position to the beginning
-                    this.lava.position.y = -15;
-                    // start the drumroll as the spectator camera moves up
-                    Game.SOUND_DRUMROLL_REPEAT.play();
-                    break;
-                case GameMode.Paused:
-                    break;
-            }
-            this.mode = mode;
+        getLava() { return this.lava; }
+        setState(state) {
+            if (this.currentState)
+                this.currentState.dispose();
+            this.currentState = state;
         }
         update(deltaT) {
-            t++;
             if (!this.running)
                 return;
-            switch (this.mode) {
-                case GameMode.Playing:
-                    this.updatePlaying(deltaT);
-                    break;
-                case GameMode.Spectating:
-                    this.updateSpectating(deltaT);
-                    break;
-            }
+            t++;
+            if (this.currentState)
+                this.currentState.update(deltaT);
+            this.ySortBoxes();
+            const physboxes = this.getPhysBoxesInRange(this.lava.position.y - Game.MAXIMUM_YDISTANCE_UNDER_LAVA, Number.POSITIVE_INFINITY);
+            physboxes.forEach(pbox => pbox.beforeCollisions(deltaT));
+            physboxes.forEach(pbox => pbox.resolveCollisions(0));
+            physboxes.forEach(pbox => pbox.afterCollisions(deltaT));
             this.updateVisiblePhysBoxes();
         }
         updateVisiblePhysBoxes() {
@@ -544,45 +582,6 @@ window.addEventListener('DOMContentLoaded', () => {
             this.observedEntitiesLastUpdate = this.observedEntitiesThisUpdate;
             this.observedEntitiesThisUpdate = tmp;
             this.observedEntitiesThisUpdate.clear();
-        }
-        updatePlaying(deltaT) {
-            // update lava position, moving at either a standard or fast pace depending on distance from player
-            if ((this.player.getPos().y - this.lava.position.y) < Game.PLAYER_DISTANCE_FOR_FAST_LAVA) {
-                this.lava.position.y += Game.LAVA_SPEED_STANDARD;
-            }
-            else {
-                this.lava.position.y += Game.LAVA_SPEED_FAST;
-            }
-            // resolve physbox collisions
-            this.ySortBoxes();
-            const physboxes = this.getPhysBoxesInRange(this.lava.position.y - Game.MAXIMUM_YDISTANCE_UNDER_LAVA, 99999);
-            physboxes.forEach(pbox => pbox.beforeCollisions(deltaT));
-            physboxes.forEach(pbox => pbox.resolveCollisions(0));
-            physboxes.forEach(pbox => pbox.afterCollisions(deltaT));
-            // update level logic
-            this.currentLevel.update(deltaT);
-            // update timers
-            this.spectateDelayTimer.update(deltaT);
-        }
-        updateSpectating(deltaT) {
-            if (!this.towerFlyByComplte) {
-                const slowDownY = this.player.getPos().y - 32.256000000000014;
-                if (camera.getY() < 32.256000000000014) {
-                    this.cameraSpeed += 0.016;
-                }
-                else if (camera.getY() > slowDownY) {
-                    this.cameraSpeed -= 0.016;
-                }
-                camera.setY(camera.getY() + this.cameraSpeed);
-                if (this.cameraSpeed <= 0 || (camera.getY() >= this.player.getPos().y)) {
-                    this.finishTowerFlyBy();
-                }
-            }
-        }
-        finishTowerFlyBy() {
-            this.towerFlyByComplte = true;
-            Game.SOUND_DRUMROLL_REPEAT.stop();
-            Game.SOUND_DRUMROLL_STOP.play();
         }
         getPhysBoxesInRange(startYValue, endYValue) {
             const physBoxes = [];
@@ -649,13 +648,8 @@ window.addEventListener('DOMContentLoaded', () => {
         }
     }
     // GAME CONSTANTS
-    Game.PLAYER_DISTANCE_FOR_FAST_LAVA = 60;
-    Game.LAVA_SPEED_STANDARD = 0.0275;
-    Game.LAVA_SPEED_FAST = 0.1;
+    Game.UPDATE_FREQUENCY_PER_SECOND = 60;
     Game.MAXIMUM_YDISTANCE_UNDER_LAVA = 100;
-    Game.DEATH_SPECTATE_DELAY = 3;
-    class GameObj extends Observable {
-    }
     class CollisionGroups {
         collides(otherGroup) { return CollisionGroups.collisionMap.get(this).has(otherGroup); }
     }
@@ -673,9 +667,8 @@ window.addEventListener('DOMContentLoaded', () => {
         [CollisionGroups.LevelOnly, new Set([CollisionGroups.Level])],
         [CollisionGroups.Unknown, new Set()]
     ]);
-    class PhysBox extends GameObj {
+    class PhysBox {
         constructor() {
-            super(...arguments);
             // status flags
             this.disposed = false;
             this.frozen = false;
@@ -689,6 +682,7 @@ window.addEventListener('DOMContentLoaded', () => {
                 [Sides.Left, new Set()], [Sides.Right, new Set()], [Sides.Top, new Set()], [Sides.Bottom, new Set()], [Sides.Forward, new Set()], [Sides.Back, new Set()], [Sides.Unknown, new Set()]
             ]);
             this.collisionBuffers = new Map([[Sides.Left, 0], [Sides.Right, 0], [Sides.Top, 0], [Sides.Bottom, 0], [Sides.Forward, 0], [Sides.Back, 0]]);
+            this.onFreezeStateChange = new NamedEvent();
             // momentum
             this.velocity = BABYLON.Vector3.Zero();
             this.terminalVelocity = 5;
@@ -727,8 +721,8 @@ window.addEventListener('DOMContentLoaded', () => {
                 this.instance.isVisible = true;
             this.active = true;
         }
-        freeze() { this.frozen = true; this.fire('freeze'); return this; }
-        unfreeze() { this.frozen = false; this.fire('unfreeze'); return this; }
+        freeze() { this.frozen = true; this.onFreezeStateChange.fire(true); return this; }
+        unfreeze() { this.frozen = false; this.onFreezeStateChange.fire(false); return this; }
         isFrozen() { return this.frozen; }
         // collisions
         getCollisionGroup() { return this.collisionGroup; }
@@ -897,9 +891,8 @@ window.addEventListener('DOMContentLoaded', () => {
         LevelState[LevelState["FinishedTower"] = 1] = "FinishedTower";
         LevelState[LevelState["Boss"] = 2] = "Boss";
     })(LevelState || (LevelState = {}));
-    class Level extends Observable {
+    class Level {
         constructor() {
-            super(...arguments);
             this.levelState = LevelState.GeneratingTower;
             this.myboxes = [];
         }
@@ -922,10 +915,12 @@ window.addEventListener('DOMContentLoaded', () => {
             const playerDistanceFromTopOfTower = (topBoxY - game.getPlayer().getPos().y);
             if (playerDistanceFromTopOfTower < Level.POPULATE_FALLBOXES_PLAYER_DISTANCE_THRESHOLD) {
                 const fallBox = this.generateFallBox();
-                fallBox.onEvent('freeze', () => {
-                    if ((this.levelState == LevelState.GeneratingTower) && (fallBox.getSide(Sides.Top) >= this.getApproxTowerHeight()))
-                        this.setState(LevelState.FinishedTower);
-                    console.log(fallBox.getSide(Sides.Top));
+                fallBox.onFreezeStateChange.addListener((frozen) => {
+                    if (frozen) {
+                        if ((this.levelState == LevelState.GeneratingTower) && (fallBox.getSide(Sides.Top) >= this.getApproxTowerHeight()))
+                            this.setState(LevelState.FinishedTower);
+                        console.log(fallBox.getSide(Sides.Top));
+                    }
                 });
                 game.addPhysBox(fallBox);
                 this.myboxes.push(fallBox);
@@ -1123,6 +1118,7 @@ window.addEventListener('DOMContentLoaded', () => {
     class Player extends PhysBox {
         constructor() {
             super();
+            this.onDeath = new NamedEvent();
             this.bestHeight = 0;
             this.health = 5;
             this.gravityDelayTimer = new GameTimer();
@@ -1184,7 +1180,7 @@ window.addEventListener('DOMContentLoaded', () => {
             this.dispose();
             this.explosionParticleSystem.start();
             Player.SOUND_DEATH.play();
-            this.fire('death', true);
+            this.onDeath.fire();
             setTimeout(() => this.explosionParticleSystem.stop(), 150);
         }
         damadge(damadger = null) {
@@ -1432,7 +1428,7 @@ window.addEventListener('DOMContentLoaded', () => {
                 if (dotCount >= 3)
                     $('#txtLoadingDots3').css("visibility", "visible");
             }, 500);
-            ResourceLoader.getInstance().onEvent('loadingProgress', (ratioToAdd) => {
+            ResourceLoader.getInstance().onLoadingProgress.addListener((ratioToAdd) => {
                 this.animationBarRatios.push(ratioToAdd);
                 if (!this.isAnimating)
                     this.updatePendingAnimations();
@@ -1609,9 +1605,8 @@ window.addEventListener('DOMContentLoaded', () => {
         }
         getStateDiv() { return $('#divInGameOverlay'); }
     }
-    class GUIManager extends Observable {
+    class GUIManager {
         constructor() {
-            super();
             this.STATE_LOAD = new GUIStateLoad(this);
             this.STATE_LOGO = new GUIStateLogo(this);
             this.STATE_MENU = new GUIStateMenu(this);

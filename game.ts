@@ -1,5 +1,6 @@
 import * as BABYLON from 'babylonjs';
 import { Scene, BackEase, Mesh } from 'babylonjs';
+import * as BABYLON_MATERIALS from 'babylonjs-materials'
 
 window.addEventListener('DOMContentLoaded', () => {
 
@@ -35,22 +36,24 @@ window.addEventListener('resize', () => {
 let game: Game;
 let t: number = 0;
 
-// Observable object that fires events
-class Observable {
-    public onEvent(eventName, callback) : CallableFunction {
-        if (!this.subscribers.has(eventName))
-            this.subscribers.set(eventName, new Set());
-        this.subscribers.get(eventName).add(callback);
-        return () => this.subscribers.get(eventName).delete(callback);
-    }
-    protected fire(eventName, ...args) {
-        if (this.subscribers.has(eventName))
-            this.subscribers.get(eventName).forEach(callback => callback(...args));
-    }
-    private subscribers : Map<string, Set<CallableFunction>> = new Map();
+interface IDisposable {
+    onDispose: NamedEvent<() => void>;
 }
 
-class ResourceLoader extends Observable {
+// Observable object that fires events
+class NamedEvent<T extends CallableFunction> {
+    public addListener(callback: T, caller: IDisposable = null) {
+        this.subscribers.add(callback);
+        if (caller)
+            caller.onDispose.addListener(() => this.subscribers.delete(callback));
+    }
+    public fire(...args) {
+        this.subscribers.forEach(callback => callback(...args));
+    }
+    private subscribers: Set<T> = new Set();
+}
+
+class ResourceLoader {
     public static getInstance() : ResourceLoader { return this.instance; }
     public async loadSound(name: string, sizeInBytes: number = 0) : Promise<BABYLON.Sound> {
         let loadedSound: BABYLON.Sound;
@@ -96,7 +99,7 @@ class ResourceLoader extends Observable {
     private updateLoadedBytes(bytes) {
         const ratioToAdd = bytes / ResourceLoader.TOTAL_RESOURCES_SIZE_IN_BYTES;
         this.loadedRatio += ratioToAdd;
-        this.fire('loadingProgress', ratioToAdd);
+        this.onLoadingProgress.fire(ratioToAdd);
         if (this.loadedRatio == 1)
             this.finishLoading();
     }
@@ -104,9 +107,11 @@ class ResourceLoader extends Observable {
         BABYLON.Texture.prototype.constructor = ((...args): any => { console.assert(false, "Attempted to load resource at runtime"); });
         BABYLON.Sound.prototype.constructor = ((...args): any => { console.assert(false, "Attempted to load resource at runtime"); });
         BABYLON.SceneLoader.ImportMesh = ((...args): any => { console.assert(false, "Attempted to load resource at runtime"); });
-        this.fire('loadingFinish');
+        this.onLoadingFinish.fire();
     }
 
+    public onLoadingProgress: NamedEvent<(ratioToAdd: number) => void> = new NamedEvent();
+    public onLoadingFinish: NamedEvent<() => void> = new NamedEvent();
     private loadedRatio: number = 0;
     private static instance: ResourceLoader = new ResourceLoader();
     private static TOTAL_RESOURCES_SIZE_IN_BYTES: number = 8022788;
@@ -243,23 +248,29 @@ class MeshPool {
 }
 
 // Singleton input manager
-class InputManager extends Observable {
+class InputManager {
     private constructor() {
-        super();
+        this.registerActions();
+    }
+    private registerActions() {
         scene.actionManager = new BABYLON.ActionManager(scene);
         scene.actionManager.registerAction(new BABYLON.ExecuteCodeAction(BABYLON.ActionManager.OnKeyDownTrigger, (evt) => {
             const key = evt.sourceEvent.key.toLowerCase();
             this.inputMap.set(key, true);
-            this.fire('keyDown', key);
+            this.onKeyDown.fire(key);
         }));
         scene.actionManager.registerAction(new BABYLON.ExecuteCodeAction(BABYLON.ActionManager.OnKeyUpTrigger, (evt) => {
             const key = evt.sourceEvent.key.toLowerCase();
             this.inputMap.set(key, false);
-            this.fire('keyUp', key);
+            this.onKeyUp.fire(key);
         }));
     }
     public static getInstance() : InputManager { return this.instance; }
     public isKeyPressed(key) : boolean { return this.inputMap.get(key); };
+
+    public onKeyDown: NamedEvent<(keyChar: string) => void> = new NamedEvent();
+    public onKeyUp: NamedEvent<(keyChar: string) => void> = new NamedEvent();
+
     private inputMap: Map<string, boolean> = new Map();
     private static instance: InputManager = new InputManager();
 }
@@ -277,6 +288,14 @@ class GameCamera {
         this.setupRotateKeyListener();
     }
 
+    private setupCamera() {
+        const camera = new BABYLON.ArcRotateCamera("Camera", 0, 0, 25, new BABYLON.Vector3(0, 0, 0), scene);
+        camera.setPosition(new BABYLON.Vector3(0, 0, 0));
+        camera.beta = 0.65;
+        camera.radius = 25;
+        camera.parent = this.node;
+        this.camera = camera;
+    }
     private setupRotateKeyListener() {
         scene.onBeforeRenderObservable.add(() => {
             const canRotate : boolean = !this.rotating && game && !game.isPaused();
@@ -290,14 +309,6 @@ class GameCamera {
                 this.onRotationStart();
             }
         });
-    }
-    private setupCamera() {
-        const camera = new BABYLON.ArcRotateCamera("Camera", 0, 0, 25, new BABYLON.Vector3(0, 0, 0), scene);
-        camera.setPosition(new BABYLON.Vector3(0, 0, 0));
-        camera.beta = 0.65;
-        camera.radius = 25;
-        camera.parent = this.node;
-        this.camera = camera;
     }
 
     private onRotationStart() {
@@ -353,25 +364,120 @@ class Sides {
 }
 
 // Game class, responsible for managing contained phys-objects
-enum GameMode {
-    Playing,
-    Spectating,
-    Paused
+abstract class GameState implements IDisposable {
+    public constructor(context: Game) { this.context = context; }
+    public abstract update(deltaT: number);
+    public dispose() { this.onDispose.fire(); }
+    public onDispose: NamedEvent<() => void> = new NamedEvent();
+    protected context: Game;
 }
-class Game {
+class GameStandard extends GameState {
+    public static async LoadResouces() {
+        GameStandard.SOUND_PAUSE_IN = await ResourceLoader.getInstance().loadSound("pauseIn.wav", 23028);
+        GameStandard.SOUND_PAUSE_OUT = await ResourceLoader.getInstance().loadSound("pauseOut.wav", 22988);
+    }
+    public constructor(context: Game) { super(context); 
+        this.currentLevel = new StartLevel();
+
+        // setup pause callback
+        InputManager.getInstance().onKeyDown.addListener((key: string) => {
+            switch(key) {
+                case 'p':
+                    if (!this.canPause)
+                        break;
+                    if (!this.context.isPaused()) {
+                        //Game.BACKGROUND_MUSIC.pause();
+                        //pauseContainer.isVisible = true;
+                        this.context.pause();
+                        GameStandard.SOUND_PAUSE_IN.play();
+                    } else {
+                        //Game.BACKGROUND_MUSIC.play();
+                        //pauseContainer.isVisible = false;
+                        this.context.play();
+                        GameStandard.SOUND_PAUSE_OUT.play();
+                    }
+                    break;
+            }
+        }, this);
+
+        this.context.getPlayer().onDeath.addListener(() => {
+            //UtilityFunctions.fadeOutSound(Game.BACKGROUND_MUSIC, 1);
+            this.canPause = false;
+            this.spectateDelayTimer.start(() => this.context.setState(new GameOver(this.context)), GameStandard.DEATH_SPECTATE_DELAY, false);
+        }, this);
+    }
+    public update(deltaT: number) {
+        const lavaSpeed: number = ((this.context.getPlayer().getPos().y - this.context.getLava().position.y) < GameStandard.PLAYER_DISTANCE_FOR_FAST_LAVA) ?
+            GameStandard.LAVA_SPEED_STANDARD :
+            GameStandard.LAVA_SPEED_FAST;
+        this.context.getLava().position.y += lavaSpeed;
+        this.currentLevel.update(deltaT);
+        this.spectateDelayTimer.update(deltaT);
+    }
+    
+    private currentLevel: Level;
+    
+    private spectateDelayTimer: GameTimer = new GameTimer();
+    private canPause: boolean = true;
+
+    private static SOUND_PAUSE_IN: BABYLON.Sound;
+    private static SOUND_PAUSE_OUT: BABYLON.Sound;
+    
+    private static DEATH_SPECTATE_DELAY: number = 3;
+    private static PLAYER_DISTANCE_FOR_FAST_LAVA: number = 60;
+    private static LAVA_SPEED_STANDARD: number = 0.0275;
+    private static LAVA_SPEED_FAST: number = 0.1;
+}
+class GameOver extends GameState {
+    public static async LoadResouces(): Promise<any> {
+        GameOver.SOUND_DRUMROLL_REPEAT = await ResourceLoader.getInstance().loadSound("drumroll.mp3",972077);
+        GameOver.SOUND_DRUMROLL_STOP = await ResourceLoader.getInstance().loadSound("drumrollStop.mp3", 25311);
+    }
+    public constructor(context: Game) { super(context);
+        camera.setY(0);
+        this.context.getLava().position.y = -15;
+        GameOver.SOUND_DRUMROLL_REPEAT.play();
+    }
+    public dispose() {
+        GameOver.SOUND_DRUMROLL_REPEAT.stop();
+        GameOver.SOUND_DRUMROLL_STOP.stop();
+    }
+    public update(deltaT: number) {
+        if (!this.towerFlyByComplte) {
+            const slowDownY = this.context.getPlayer().getPos().y - 32.256000000000014;
+            if (camera.getY() < 32.256000000000014) {
+                this.cameraSpeed += 0.016;
+            } else if (camera.getY() > slowDownY) {
+                this.cameraSpeed -= 0.016;
+            }
+            camera.setY(camera.getY() + this.cameraSpeed);
+            if (this.cameraSpeed <= 0 || (camera.getY() >= this.context.getPlayer().getPos().y)) {
+                this.finishTowerFlyBy();
+            }
+        }
+    }
+    private finishTowerFlyBy() {
+        this.towerFlyByComplte = true;
+        GameOver.SOUND_DRUMROLL_REPEAT.stop();
+        GameOver.SOUND_DRUMROLL_STOP.play();
+    }
+
+    private static SOUND_DRUMROLL_REPEAT: BABYLON.Sound;
+    private static SOUND_DRUMROLL_STOP: BABYLON.Sound;
+    private towerFlyByComplte: boolean = false;
+    private cameraSpeed: number;
+}
+
+class Game implements IDisposable {
     public static async LoadResources() : Promise<any> {
         // load sounds
         //Game.BACKGROUND_MUSIC = await ResourceLoader.getInstance().loadSound("https://raw.githubusercontent.com/lattesipper/endlessplatformer/master/resources/music/dreamsofabove.mp3");
         //Game.BACKGROUND_MUSIC.loop = true;
-        Game.SOUND_PAUSE_IN = await ResourceLoader.getInstance().loadSound("pauseIn.wav", 23028);
-        Game.SOUND_PAUSE_OUT = await ResourceLoader.getInstance().loadSound("pauseOut.wav", 22988);
-        Game.SOUND_DRUMROLL_REPEAT = await ResourceLoader.getInstance().loadSound("drumroll.mp3",972077);
-        Game.SOUND_DRUMROLL_STOP = await ResourceLoader.getInstance().loadSound("drumrollStop.mp3", 25311);
         // load lava mesh
         const lava = BABYLON.Mesh.CreateGround("ground", 150, 150, 25, scene);
         lava.visibility = 0.5;
         lava.position.y = -20;
-        const lavaMaterial = new BABYLON.LavaMaterial("lava", scene);	
+        const lavaMaterial = new BABYLON_MATERIALS.LavaMaterial("lava", scene);	
         lavaMaterial.noiseTexture = await ResourceLoader.getInstance().loadTexture("cloud.png", 72018); // Set the bump texture
         lavaMaterial.diffuseTexture = await ResourceLoader.getInstance().loadTexture("lavatile.jpg", 457155); // Set the diffuse texture
         lavaMaterial.speed = 0.5;
@@ -380,54 +486,22 @@ class Game {
         lavaMaterial.freeze();
         lava.material = lavaMaterial;
         lava.isVisible = false;
-        lavaMaterial.blendMode = BABYLON.Engine.ALPHA_MULTIPLY;
+        //lavaMaterial.blendMode = BABYLON.Engine.ALPHA_MULTIPLY;
         Game.MESH_LAVA = lava;
+
+        await Promise.all([
+            GameStandard.LoadResouces(),
+            GameOver.LoadResouces()
+        ]);
     }
     public dispose() {
-        Game.SOUND_DRUMROLL_REPEAT.stop();
-        //Game.BACKGROUND_MUSIC.stop();
-        scene.onBeforeRenderObservable.removeCallback(this.updateCallbackFunc);
+        this.onDispose.fire();
+        clearInterval(this.updateInterval);
         this.physBoxesSortedY.forEach((physBox) => physBox.dispose());
         this.lava.dispose();
-        this.callbackFunctions.forEach((func) => func());
     }
 
-    public getLavaLevel() : number { return this.lava.position.y - 1; }
-    public pause() { this.running = false; }
-    public play() { this.running = true; }
-    public isPaused() { return !this.running; }
-    public start() {
-        // setup update callback
-        this.updateCallbackFunc = (() => this.update(1/60));
-        scene.onBeforeRenderObservable.add(this.updateCallbackFunc);
-
-        // setup pause callback
-        this.callbackFunctions.push(
-            InputManager.getInstance().onEvent('keyDown', (key) => {
-                if (this.canPause) {
-                    switch(key) {
-                        case 'p':
-                            if (this.running) {
-                                //Game.BACKGROUND_MUSIC.pause();
-                                //pauseContainer.isVisible = true;
-                                this.running = false;
-                                Game.SOUND_PAUSE_IN.play();
-                            } else {
-                                //Game.BACKGROUND_MUSIC.play();
-                                //pauseContainer.isVisible = false;
-                                this.running = true;
-                                Game.SOUND_PAUSE_OUT.play();
-                            }
-                            break;
-                        case 'space':
-                            if (this.mode == GameMode.Spectating && !this.towerFlyByComplte) {
-                                this.finishTowerFlyBy();
-                            }
-                    }
-                }
-            })
-        );
-
+    private createStartingEntities() {
         // create lava
         this.lava = Game.MESH_LAVA.createInstance('');
 
@@ -438,73 +512,59 @@ class Game {
                 .setPos(new BABYLON.Vector3(0, 0, 0));
         this.addPhysBox(bottomBox);
 
-        // all is ready, create the player
+        // create the player
         const player = new Player();
         player.setPos(new BABYLON.Vector3(0, 0, 0));
         player.setSide(Sides.Bottom, bottomBox.getSide(Sides.Top) + 0.5);
         this.addPhysBox(player);
-        this.callbackFunctions.push(
-            player.onEvent('death', () => {
-                //UtilityFunctions.fadeOutSound(Game.BACKGROUND_MUSIC, 1);
-                this.canPause = false;
-                this.spectateDelayTimer.start(() => this.changeMode(GameMode.Spectating), Game.DEATH_SPECTATE_DELAY, false);
-            })
-        );
         this.player = player;
+    }
 
+    public getLavaLevel() : number { return this.lava.position.y - 1; }
+    public pause() { this.running = false; }
+    public play() { this.running = true; }
+    public isPaused() { return !this.running; }
+    public start() {
+        // setup update callback
+        const updateDelta = 1 / Game.UPDATE_FREQUENCY_PER_SECOND;
+        this.updateInterval = setInterval(() => {
+            this.update(updateDelta);
+        }, 1000 / Game.UPDATE_FREQUENCY_PER_SECOND);
+
+        // create initial entities
+        this.createStartingEntities();
+
+        // set state to start with standard gameplay
+        this.currentState = new GameStandard(this);
+
+        // perform initial sorting of boxes
         this.ySortBoxes();
 
-        // create initial cube cluster
-        this.currentLevel = new StartLevel();
-
-        // play background music
-        //Game.BACKGROUND_MUSIC.loop = true;
-        //Game.BACKGROUND_MUSIC.setVolume(0); // FINDME
-        // Game.BACKGROUND_MUSIC.setVolume(0.5);
-        //Game.BACKGROUND_MUSIC.play();
         camera.resetRotationindex();
     }
 
     public addPhysBox(box) { this.physBoxesSortedY.push(box); this.physBoxToYIndex.set(box, this.getClosestYIndex(box.getPos().y)); }
     public getPhysObjects() { return this.physBoxesSortedY; }
     public getPlayer() : Player { return this.player; }
+    public getLava(): BABYLON.TransformNode { return this.lava; }
 
-    private changeMode(mode: GameMode) {
-        switch(mode) {
-            case GameMode.Playing:
-                // show only the gameplay container
-                //gameOverContainer.isVisible = false;
-                //gameplayContainer.isVisible = true;
-                break;
-            case GameMode.Spectating:
-                console.assert(this.mode == GameMode.Playing);
-                // show only the game over container
-                //gameplayContainer.isVisible = false;
-                //gameOverContainer.isVisible = true;
-                // reset camera position to the start of the level, and orientate to side
-                camera.setY(0);
-                // reset lava position to the beginning
-                this.lava.position.y = -15;
-                // start the drumroll as the spectator camera moves up
-                Game.SOUND_DRUMROLL_REPEAT.play();
-                break;
-            case GameMode.Paused:
-                break;
-        }
-        this.mode = mode;
+    public setState(state: GameState) {
+        if (this.currentState)
+            this.currentState.dispose();
+        this.currentState = state;
     }
     private update(deltaT: number) {
-        t++;
         if (!this.running)
             return;
-        switch(this.mode) {
-            case GameMode.Playing:
-                this.updatePlaying(deltaT);
-                break;
-            case GameMode.Spectating:
-                this.updateSpectating(deltaT);
-                break;
-        }
+        t++;
+        if (this.currentState)
+            this.currentState.update(deltaT);
+
+        this.ySortBoxes();
+        const physboxes = this.getPhysBoxesInRange(this.lava.position.y - Game.MAXIMUM_YDISTANCE_UNDER_LAVA, Number.POSITIVE_INFINITY);
+        physboxes.forEach(pbox => pbox.beforeCollisions(deltaT));
+        physboxes.forEach(pbox => pbox.resolveCollisions(0));
+        physboxes.forEach(pbox => pbox.afterCollisions(deltaT));
         this.updateVisiblePhysBoxes();
     }
     private updateVisiblePhysBoxes() {
@@ -526,44 +586,6 @@ class Game {
         this.observedEntitiesThisUpdate = tmp;
         this.observedEntitiesThisUpdate.clear();
     }
-    private updatePlaying(deltaT: number) {
-        // update lava position, moving at either a standard or fast pace depending on distance from player
-        if ((this.player.getPos().y - this.lava.position.y) < Game.PLAYER_DISTANCE_FOR_FAST_LAVA) {
-            this.lava.position.y += Game.LAVA_SPEED_STANDARD;
-        } else {
-            this.lava.position.y += Game.LAVA_SPEED_FAST;
-        }
-        // resolve physbox collisions
-        this.ySortBoxes();
-        const physboxes = this.getPhysBoxesInRange(this.lava.position.y - Game.MAXIMUM_YDISTANCE_UNDER_LAVA, 99999);
-        physboxes.forEach(pbox => pbox.beforeCollisions(deltaT));
-        physboxes.forEach(pbox => pbox.resolveCollisions(0));
-        physboxes.forEach(pbox => pbox.afterCollisions(deltaT));
-        // update level logic
-        this.currentLevel.update(deltaT);
-        // update timers
-        this.spectateDelayTimer.update(deltaT);
-    }
-    private updateSpectating(deltaT: number) {
-        if (!this.towerFlyByComplte) {
-            const slowDownY = this.player.getPos().y - 32.256000000000014;
-            if (camera.getY() < 32.256000000000014) {
-                this.cameraSpeed += 0.016;
-            } else if (camera.getY() > slowDownY) {
-                this.cameraSpeed -= 0.016;
-            }
-            camera.setY(camera.getY() + this.cameraSpeed);
-            if (this.cameraSpeed <= 0 || (camera.getY() >= this.player.getPos().y)) {
-                this.finishTowerFlyBy();
-            }
-        }
-    }
-    private finishTowerFlyBy() {
-        this.towerFlyByComplte = true;
-        Game.SOUND_DRUMROLL_REPEAT.stop();
-        Game.SOUND_DRUMROLL_STOP.play();
-    }
-
     private getPhysBoxesInRange(startYValue: number, endYValue: number) : Array<PhysBox> {
         const physBoxes : Array<PhysBox> = [];
         let searchYUp : number = this.getClosestYIndex(startYValue);
@@ -575,7 +597,6 @@ class Game {
         }
         return physBoxes;
     }
-
     // SWEEP AND PRUNE
     private getClosestYIndex(yValue) {
         let low = 0;
@@ -626,38 +647,20 @@ class Game {
         return collisions;
     }
 
-    // RESOURCES
-    private static BACKGROUND_MUSIC: BABYLON.Sound;
-    private static SOUND_PAUSE_IN: BABYLON.Sound;
-    private static SOUND_PAUSE_OUT: BABYLON.Sound;
-    private static SOUND_DRUMROLL_REPEAT: BABYLON.Sound;
-    private static SOUND_DRUMROLL_STOP: BABYLON.Sound;
     private static MESH_LAVA: BABYLON.Mesh;
+
     // GAME CONSTANTS
-    private static PLAYER_DISTANCE_FOR_FAST_LAVA: number = 60;
-    private static LAVA_SPEED_STANDARD: number = 0.0275;
-    private static LAVA_SPEED_FAST: number = 0.1;
+    private static UPDATE_FREQUENCY_PER_SECOND: number = 60;
     private static MAXIMUM_YDISTANCE_UNDER_LAVA: number = 100;
-    private static DEATH_SPECTATE_DELAY: number = 3;
 
+    public onDispose: NamedEvent<() => void> = new NamedEvent();
 
-    private mode: GameMode = GameMode.Playing;
+    private currentState: GameState;
 
-    // shared mode variables
-    private canPause: boolean = true;
     private running : boolean = true;
 
-    // playing mode variables
-    private currentLevel: Level = null;
-
-    // spectate mode variables
-    private spectateDelayTimer: GameTimer = new GameTimer();
-    private towerFlyByComplte: boolean = false;
-    private cameraSpeed: number = 0;
-
     // callbacks
-    private updateCallbackFunc;
-    private callbackFunctions : Array<CallableFunction> = [];
+    private updateInterval;
 
     // sorted entities
     private physBoxesSortedY: Array<PhysBox> = [];
@@ -671,8 +674,6 @@ class Game {
     private player: Player;
     private lava: BABYLON.TransformNode;
 }
-
-class GameObj extends Observable {}
 
 class CollisionGroups {
     public collides(otherGroup: CollisionGroups) : boolean { return CollisionGroups.collisionMap.get(this).has(otherGroup); }
@@ -692,7 +693,7 @@ class CollisionGroups {
     ]);
 }
 
-abstract class PhysBox extends GameObj {
+abstract class PhysBox {
     // destructor
     public dispose() { this.endObservation(); this.disposed = true; }
     public isDisposed() : boolean { return this.disposed; }
@@ -724,8 +725,8 @@ abstract class PhysBox extends GameObj {
             this.instance.isVisible = true;
         this.active = true; 
     }
-    public freeze() : PhysBox { this.frozen = true; this.fire('freeze'); return this; }
-    public unfreeze() : PhysBox { this.frozen = false; this.fire('unfreeze'); return this; }
+    public freeze() : PhysBox { this.frozen = true; this.onFreezeStateChange.fire(true); return this; }
+    public unfreeze() : PhysBox { this.frozen = false; this.onFreezeStateChange.fire(false); return this; }
     public isFrozen() : boolean { return this.frozen; }
 
     // collisions
@@ -918,6 +919,8 @@ abstract class PhysBox extends GameObj {
     ]);
     private collisionBuffers: Map<Sides, number> = new Map([[Sides.Left, 0], [Sides.Right, 0], [Sides.Top, 0], [Sides.Bottom, 0], [Sides.Forward, 0], [Sides.Back, 0]]);
 
+    public onFreezeStateChange: NamedEvent<(frozen: boolean) => void> = new NamedEvent();
+
     // momentum
     private velocity: BABYLON.Vector3 = BABYLON.Vector3.Zero();
     private terminalVelocity: number = 5;
@@ -935,7 +938,7 @@ enum LevelState {
     FinishedTower,
     Boss
 }
-abstract class Level extends Observable {
+abstract class Level {
     protected abstract getApproxTowerHeight(): number;
     protected abstract generateFallBox(): FallBox;
     protected abstract afterFallBoxPositioning(fallBox: FallBox);
@@ -953,10 +956,12 @@ abstract class Level extends Observable {
         const playerDistanceFromTopOfTower = (topBoxY - game.getPlayer().getPos().y);
         if (playerDistanceFromTopOfTower < Level.POPULATE_FALLBOXES_PLAYER_DISTANCE_THRESHOLD) {
             const fallBox = this.generateFallBox();
-            fallBox.onEvent('freeze', () => {
-                if ((this.levelState == LevelState.GeneratingTower) && (fallBox.getSide(Sides.Top) >= this.getApproxTowerHeight()))
-                    this.setState(LevelState.FinishedTower);
-                console.log(fallBox.getSide(Sides.Top));
+            fallBox.onFreezeStateChange.addListener((frozen: boolean) => {
+                if (frozen) {
+                    if ((this.levelState == LevelState.GeneratingTower) && (fallBox.getSide(Sides.Top) >= this.getApproxTowerHeight()))
+                        this.setState(LevelState.FinishedTower);
+                    console.log(fallBox.getSide(Sides.Top));
+                }
             });
             game.addPhysBox(fallBox);
             this.myboxes.push(fallBox);
@@ -1216,7 +1221,7 @@ class Player extends PhysBox {
         this.dispose();
         this.explosionParticleSystem.start();
         Player.SOUND_DEATH.play();
-        this.fire('death', true);
+        this.onDeath.fire();
         setTimeout(() => this.explosionParticleSystem.stop(), 150);
     }
 
@@ -1406,6 +1411,8 @@ class Player extends PhysBox {
     private static GRAVITY = 0.015;
     private static MAX_Y_SPEED = 0.5;
 
+    public onDeath: NamedEvent<() => void> = new NamedEvent();
+
     private mesh: BABYLON.AbstractMesh;
     private bestHeight: number = 0;
     private explosionParticleSystem: BABYLON.ParticleSystem;
@@ -1454,7 +1461,7 @@ class GUIStateLoad extends GUIState {
             if (dotCount >= 3) $('#txtLoadingDots3').css("visibility", "visible");
         }, 500);
 
-        ResourceLoader.getInstance().onEvent('loadingProgress', (ratioToAdd) => {
+        ResourceLoader.getInstance().onLoadingProgress.addListener((ratioToAdd: number) => {
             this.animationBarRatios.push(ratioToAdd);
             if (!this.isAnimating)
                 this.updatePendingAnimations();
@@ -1639,7 +1646,7 @@ class GUIStateInGame extends GUIState {
     public getStateDiv() { return $('#divInGameOverlay'); }
 }
 
-class GUIManager extends Observable {
+class GUIManager {
     public static getInstance() : GUIManager { return this.instance; }
     public static async LoadResources() {
         //await ResourceLoader.getInstance().loadImageIntoContainer('test', 'https://raw.githubusercontent.com/lattesipper/endlessplatformer/master/resources/guitextures/tmpbackground.png', 0);
@@ -1670,8 +1677,6 @@ class GUIManager extends Observable {
     public getActiveStateCount() : number { return this.currentStates.length; }
     private getCurrentState() : GUIState { return this.currentStates.length > 0 ? this.currentStates[this.currentStates.length - 1] : null; }
     public constructor() {
-        super();
-
         $('.makeRelative').each(function() {
             const elm = $(this);
             elm.css("font-size",GUIManager.convertPixelToPercentage(elm.css('height'), 'y')  + 'vh');
