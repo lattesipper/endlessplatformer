@@ -238,6 +238,7 @@ class MeshPool {
     }
     public returnMesh(instance : BABYLON.AbstractMesh) {
         instance.isVisible = false;
+        instance.unfreezeWorldMatrix();
         this.instances.push(instance);
     }
     private instances: Array<BABYLON.AbstractMesh> = [];
@@ -465,7 +466,7 @@ class GameOver extends GameState {
     private static SOUND_DRUMROLL_REPEAT: BABYLON.Sound;
     private static SOUND_DRUMROLL_STOP: BABYLON.Sound;
     private towerFlyByComplte: boolean = false;
-    private cameraSpeed: number;
+    private cameraSpeed: number = 0;
 }
 
 class Game implements IDisposable {
@@ -515,7 +516,7 @@ class Game implements IDisposable {
         // create the player
         const player = new Player();
         player.setPos(new BABYLON.Vector3(0, 0, 0));
-        player.setSide(Sides.Bottom, bottomBox.getSide(Sides.Top) + 0.5);
+        player.setSide(Sides.Bottom, bottomBox.getSide(Sides.Top));
         this.addPhysBox(player);
         this.player = player;
     }
@@ -647,16 +648,18 @@ class Game implements IDisposable {
         return collisions;
     }
 
+    // RESOURCES
     private static MESH_LAVA: BABYLON.Mesh;
 
     // GAME CONSTANTS
     private static UPDATE_FREQUENCY_PER_SECOND: number = 60;
     private static MAXIMUM_YDISTANCE_UNDER_LAVA: number = 100;
 
+    // events
     public onDispose: NamedEvent<() => void> = new NamedEvent();
 
+    // state
     private currentState: GameState;
-
     private running : boolean = true;
 
     // callbacks
@@ -675,6 +678,7 @@ class Game implements IDisposable {
     private lava: BABYLON.TransformNode;
 }
 
+// Enum-like class for definining collision groups
 class CollisionGroups {
     public collides(otherGroup: CollisionGroups) : boolean { return CollisionGroups.collisionMap.get(this).has(otherGroup); }
     public static Level: CollisionGroups = new CollisionGroups();
@@ -693,9 +697,9 @@ class CollisionGroups {
     ]);
 }
 
-abstract class PhysBox {
+abstract class PhysBox implements IDisposable {
     // destructor
-    public dispose() { this.endObservation(); this.disposed = true; }
+    public dispose() { this.endObservation(); this.onDispose.fire(); this.disposed = true; }
     public isDisposed() : boolean { return this.disposed; }
 
     // physical properties
@@ -725,8 +729,17 @@ abstract class PhysBox {
             this.instance.isVisible = true;
         this.active = true; 
     }
-    public freeze() : PhysBox { this.frozen = true; this.onFreezeStateChange.fire(true); return this; }
-    public unfreeze() : PhysBox { this.frozen = false; this.onFreezeStateChange.fire(false); return this; }
+    public freeze() : PhysBox { 
+        this.frozen = true; 
+        this.onFreezeStateChange.fire(true); 
+        this.instance.freezeWorldMatrix();
+        return this; 
+    }
+    public unfreeze() : PhysBox { 
+        this.frozen = false; 
+        this.onFreezeStateChange.fire(false);
+        this.instance.unfreezeWorldMatrix(); 
+        return this; }
     public isFrozen() : boolean { return this.frozen; }
 
     // collisions
@@ -738,7 +751,10 @@ abstract class PhysBox {
     public setCollisionBuffer(side: Sides, extent: number) { return this.collisionBuffers.set(side, extent); }
     public clearCollisionBuffer() { Sides.All.forEach(side => this.collisionBuffers.set(side, 0)); }
 
+    // should the physbox register a collision with the other? (ghost collision)
     public logicallyIntersects(otherBox: PhysBox) : boolean { return this.getCollisionGroup().collides(otherBox.getCollisionGroup()); }
+
+    // does the physbox physically collide with another? (solid collision)
     public physicallyIntersects(otherBox: PhysBox) : boolean {
         // physboxes can't collide with themselves
         if (otherBox == this)
@@ -763,6 +779,7 @@ abstract class PhysBox {
         this.instance = this.getMeshPool().getMesh();
         this.instance.scaling = BABYLON.Vector3.One().scale(this.scaling);
         this.instance.position = this.getPos();
+        if (this.frozen) this.instance.freezeWorldMatrix();
         this.afterStartObservation();
     }
     public endObservation() {
@@ -847,6 +864,7 @@ abstract class PhysBox {
         // if we are already colliding with a physbox before applying velocity, we are stuck within one. Don't apply velocities
         if (possibleCollisions.some(physbox => physbox.physicallyIntersects(this)))
             return;
+        
         // resolve in Y axis
         const yVelocity = this.getVelocity().y;
         this.getPos().y += yVelocity;
@@ -918,6 +936,8 @@ abstract class PhysBox {
         [Sides.Left, new Set<PhysBox>()], [Sides.Right, new Set<PhysBox>()], [Sides.Top, new Set<PhysBox>()], [Sides.Bottom, new Set<PhysBox>()], [Sides.Forward, new Set<PhysBox>()], [Sides.Back, new Set<PhysBox>()], [Sides.Unknown, new Set<PhysBox>()]
     ]);
     private collisionBuffers: Map<Sides, number> = new Map([[Sides.Left, 0], [Sides.Right, 0], [Sides.Top, 0], [Sides.Bottom, 0], [Sides.Forward, 0], [Sides.Back, 0]]);
+
+    public onDispose: NamedEvent<() => void> = new NamedEvent();
 
     public onFreezeStateChange: NamedEvent<(frozen: boolean) => void> = new NamedEvent();
 

@@ -7,8 +7,8 @@ var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, ge
         step((generator = generator.apply(thisArg, _arguments || [])).next());
     });
 };
-//import * as BABYLON from 'babylonjs';
-//import * as BABYLON_MATERIALS from 'babylonjs-materials';
+// import * as BABYLON from 'babylonjs';
+// import * as BABYLON_MATERIALS from 'babylonjs-materials';
 window.addEventListener('DOMContentLoaded', () => {
     // Create canvas and engine.
     const canvas = (document.getElementById('renderCanvas'));
@@ -430,6 +430,7 @@ window.addEventListener('DOMContentLoaded', () => {
         constructor(context) {
             super(context);
             this.towerFlyByComplte = false;
+            this.cameraSpeed = 0;
             camera.setY(0);
             this.context.getLava().position.y = -15;
             GameOver.SOUND_DRUMROLL_REPEAT.play();
@@ -520,7 +521,7 @@ window.addEventListener('DOMContentLoaded', () => {
             // create the player
             const player = new Player();
             player.setPos(new BABYLON.Vector3(0, 0, 0));
-            player.setSide(Sides.Bottom, bottomBox.getSide(Sides.Top) + 0.5);
+            player.setSide(Sides.Bottom, bottomBox.getSide(Sides.Top));
             this.addPhysBox(player);
             this.player = player;
         }
