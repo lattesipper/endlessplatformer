@@ -1,5 +1,5 @@
 import * as BABYLON from 'babylonjs';
-import { Scene, BackEase, Mesh } from 'babylonjs';
+import { Scene, BackEase, Mesh, GamepadManager } from 'babylonjs';
 import * as BABYLON_MATERIALS from 'babylonjs-materials'
 
 window.addEventListener('DOMContentLoaded', () => {
@@ -254,25 +254,69 @@ class InputManager {
         this.registerActions();
     }
     private registerActions() {
+        const keyboardkey_to_virtkey: Map<string, number> = new Map([
+            [' ', InputManager.KEY_RIGHT], ['arrowleft', InputManager.KEY_RIGHTTRIGGER], ['arrowright', InputManager.KEY_LEFTTRIGGER],
+            ['p', InputManager.KEY_START],
+            ['w', InputManager.KEY_W], ['d', InputManager.KEY_D], ['s', InputManager.KEY_S], ['a', InputManager.KEY_A]
+        ]);
+        const gamepadkey_to_virtkey: Map<number, number> = new Map([
+            [3, InputManager.KEY_UP],
+            [1, InputManager.KEY_RIGHT],
+            [0, InputManager.KEY_DOWN],
+            [2, InputManager.KEY_LEFT],
+            [9, InputManager.KEY_START]
+        ]);
+
+        const handleGamepadkey = (keydown, virtkey) => {
+            if (!virtkey)
+                return;
+            this.inputMap.set(virtkey, keydown);
+            (keydown ? this.onKeyDown : this.onKeyUp).fire(virtkey);
+        };
+
+        this.gamepadManager = new BABYLON.GamepadManager();
+        this.gamepadManager.onGamepadConnectedObservable.add((gamepad, state) => {
+            if (gamepad instanceof BABYLON.Xbox360Pad || gamepad instanceof BABYLON.DualShockPad || gamepad instanceof BABYLON.GenericPad) {
+                gamepad.onButtonDownObservable.add((button, state) => handleGamepadkey(true, gamepadkey_to_virtkey.get(button)));
+                gamepad.onButtonUpObservable.add((button, state) => handleGamepadkey(false, gamepadkey_to_virtkey.get(button)));
+            }
+            gamepad.onleftstickchanged((values) => { this.leftStickOffset.x = values.x; this.leftStickOffset.y = values.y; })
+            gamepad.onrightstickchanged((values) => { this.rightStickOffset.x = values.x; this.rightStickOffset.y = values.y; })
+        });
+
         scene.actionManager = new BABYLON.ActionManager(scene);
-        scene.actionManager.registerAction(new BABYLON.ExecuteCodeAction(BABYLON.ActionManager.OnKeyDownTrigger, (evt) => {
-            const key = evt.sourceEvent.key.toLowerCase();
-            this.inputMap.set(key, true);
-            this.onKeyDown.fire(key);
-        }));
-        scene.actionManager.registerAction(new BABYLON.ExecuteCodeAction(BABYLON.ActionManager.OnKeyUpTrigger, (evt) => {
-            const key = evt.sourceEvent.key.toLowerCase();
-            this.inputMap.set(key, false);
-            this.onKeyUp.fire(key);
-        }));
+        scene.actionManager.registerAction(new BABYLON.ExecuteCodeAction(BABYLON.ActionManager.OnKeyDownTrigger, (evt) => 
+            handleGamepadkey(true, keyboardkey_to_virtkey.get(evt.sourceEvent.key.toLowerCase()))));
+        scene.actionManager.registerAction(new BABYLON.ExecuteCodeAction(BABYLON.ActionManager.OnKeyUpTrigger, (evt) => 
+            handleGamepadkey(false, keyboardkey_to_virtkey.get(evt.sourceEvent.key.toLowerCase()))));
     }
     public static getInstance() : InputManager { return this.instance; }
-    public isKeyPressed(key) : boolean { return this.inputMap.get(key); };
+    public isKeyPressed(key: number) : boolean { return this.inputMap.get(key); };
 
-    public onKeyDown: NamedEvent<(keyChar: string) => void> = new NamedEvent();
-    public onKeyUp: NamedEvent<(keyChar: string) => void> = new NamedEvent();
+    public getLeftStickOffset(): BABYLON.Vector2 {
+        if (this.gamepadManager.gamepads.length == 0) {
+            this.leftStickOffset.set(0, 0);
+            if (this.isKeyPressed(InputManager.KEY_W)) this.leftStickOffset.y = 1;
+            if (this.isKeyPressed(InputManager.KEY_D)) this.leftStickOffset.x = 1;
+            if (this.isKeyPressed(InputManager.KEY_S)) this.leftStickOffset.y = -1;
+            if (this.isKeyPressed(InputManager.KEY_A)) this.leftStickOffset.x = -1;
+        } 
+        return this.leftStickOffset;
+    }
 
-    private inputMap: Map<string, boolean> = new Map();
+    public onKeyDown: NamedEvent<(virtKey: number) => void> = new NamedEvent();
+    public onKeyUp: NamedEvent<(virtKey: number) => void> = new NamedEvent();
+
+    public static KEY_UP: number = 0; public static KEY_RIGHT: number = 1; public static KEY_DOWN: number = 2; public static KEY_LEFT: number = 3;
+    public static KEY_LEFTTRIGGER: number = 4; public static KEY_RIGHTTRIGGER: number = 5;
+    private static KEY_W: number = 6; private static KEY_D: number = 7; private static KEY_S: number = 8; private static KEY_A: number = 9;
+    public static KEY_START: number = 10;
+
+    private gamepadManager: GamepadManager;
+
+    private leftStickOffset: BABYLON.Vector2 = new BABYLON.Vector2();
+    private rightStickOffset: BABYLON.Vector2 = new BABYLON.Vector2();
+    private inputMap: Map<number, boolean> = new Map();
     private static instance: InputManager = new InputManager();
 }
 
@@ -300,8 +344,8 @@ class GameCamera {
     private setupRotateKeyListener() {
         scene.onBeforeRenderObservable.add(() => {
             const canRotate : boolean = !this.rotating && game && !game.isPaused();
-            const rotateRight : boolean = InputManager.getInstance().isKeyPressed('arrowright');
-            const rotateLeft : boolean = InputManager.getInstance().isKeyPressed('arrowleft');
+            const rotateRight : boolean = InputManager.getInstance().isKeyPressed(InputManager.KEY_LEFTTRIGGER);
+            const rotateLeft : boolean = InputManager.getInstance().isKeyPressed(InputManager.KEY_RIGHTTRIGGER);
             if ((rotateLeft || rotateRight) && canRotate) {
                 const animationBox : BABYLON.Animation = new BABYLON.Animation("myAnimation", "alpha", 60, BABYLON.Animation.ANIMATIONTYPE_FLOAT, BABYLON.Animation.ANIMATIONLOOPMODE_CONSTANT);
                 animationBox.setKeys([ { frame: 0, value: this.camera.alpha }, { frame: 20, value: this.camera.alpha + (Math.PI / 2) * (rotateRight ? 1 : -1)} ]);
@@ -381,9 +425,10 @@ class GameStandard extends GameState {
         this.currentLevel = new StartLevel();
 
         // setup pause callback
-        InputManager.getInstance().onKeyDown.addListener((key: string) => {
+        InputManager.getInstance().onKeyDown.addListener((key: number) => {
             switch(key) {
-                case 'p':
+                case InputManager.KEY_START:
+                    alert("TEST");
                     if (!this.canPause)
                         break;
                     if (!this.context.isPaused()) {
@@ -732,13 +777,13 @@ abstract class PhysBox implements IDisposable {
     public freeze() : PhysBox { 
         this.frozen = true; 
         this.onFreezeStateChange.fire(true); 
-        this.instance.freezeWorldMatrix();
+        if (this.instance) this.instance.freezeWorldMatrix();
         return this; 
     }
     public unfreeze() : PhysBox { 
         this.frozen = false; 
         this.onFreezeStateChange.fire(false);
-        this.instance.unfreezeWorldMatrix(); 
+        if (this.instance) this.instance.unfreezeWorldMatrix(); 
         return this; }
     public isFrozen() : boolean { return this.frozen; }
 
@@ -1283,13 +1328,11 @@ class Player extends PhysBox {
     }
 
     private determineVelocities() {
-        let wKey; let aKey; let sKey; let dKey;
-        switch(camera.getRotationIndex()) {
-            case 1: wKey = 'd'; aKey = 'w'; sKey = 'a';  dKey = 's'; break;
-            case 2: wKey = 's'; aKey = 'd'; sKey = 'w';  dKey = 'a'; break;
-            case 3: wKey = 'a'; aKey = 's'; sKey = 'd';  dKey = 'w'; break;
-            case 0: wKey = 'w'; aKey = 'a'; sKey = 's';  dKey = 'd'; break;
-        }
+        const offset = InputManager.getInstance().getLeftStickOffset();
+        const movement = BABYLON.Vector3.TransformCoordinates(
+            new BABYLON.Vector3(offset.x, 0, offset.y),
+            BABYLON.Matrix.RotationYawPitchRoll(-(Math.PI / 2) * camera.getRotationIndex(), 0, 0)
+        );
 
         const mesh = this.getMeshInstance();
 
@@ -1316,7 +1359,7 @@ class Player extends PhysBox {
                 if (this.getCollisions(side).size) {
                     count += this.getCollisions(side).size;
                     this.getCollisions(side).forEach((physBox) => avgYSpeed += physBox.getVelocity().y);
-                    if (InputManager.getInstance().isKeyPressed(' ')) {
+                    if (InputManager.getInstance().isKeyPressed(InputManager.KEY_RIGHT)) {
                         this.getVelocity()[side.dim] = Player.SIDE_XZ_IMPULSE * side.direction * -1; this.getVelocity().y = Player.SIDE_JUMP_IMPULSE;
                         if (!Player.SOUND_HIT_HEAD.isPlaying) Player.SOUND_JUMP.play();
                         if (this.gravityDelayTimer.isRunning()) this.gravityDelayTimer.forceFinish();
@@ -1325,7 +1368,7 @@ class Player extends PhysBox {
             });    
         }
 
-        if (count && !InputManager.getInstance().isKeyPressed(' ')) {
+        if (count && !InputManager.getInstance().isKeyPressed(InputManager.KEY_RIGHT)) {
             avgYSpeed /= count;                                 // find average speed of the boxes the player is pressing against
             avgYSpeed -= Player.SIDE_SLIDE_SPEED;               // and add the slide speed to find the players velocity when sliding  
             // only let the player slide if their velocity is already less than this speed (don't allow them to stick automatically, they have to fall a bit first)
@@ -1340,42 +1383,31 @@ class Player extends PhysBox {
 
         // grounded, apply movement velocity instantaneously
         if (this.getCollisions(Sides.Bottom).size) {
-            if (InputManager.getInstance().isKeyPressed(wKey)) {
-                this.getVelocity().z = Player.GROUND_MOVE_SPEED;
-            } else if (InputManager.getInstance().isKeyPressed(sKey)) {
-                this.getVelocity().z = -Player.GROUND_MOVE_SPEED;
-            } else {
-                this.getVelocity().z = 0;
-            }
-            if (InputManager.getInstance().isKeyPressed(aKey)) {
-                this.getVelocity().x = -Player.GROUND_MOVE_SPEED;
-            } else if (InputManager.getInstance().isKeyPressed(dKey)) {
-                this.getVelocity().x = Player.GROUND_MOVE_SPEED;
-            } else {
-                this.getVelocity().x = 0;
-            }
-            if (InputManager.getInstance().isKeyPressed(' ')) {
+            this.setVelocity(movement.scale(Player.GROUND_MOVE_SPEED));
+            if (InputManager.getInstance().isKeyPressed(InputManager.KEY_RIGHT)) {
                 if (!Player.SOUND_HIT_HEAD.isPlaying) Player.SOUND_JUMP.play();
                 this.getVelocity().y = Player.JUMP_IMPULSE;
             }    
         } 
         // in-air, apply movement velocity through acceleration
         else {
-            if (InputManager.getInstance().isKeyPressed(wKey)) {
-                this.getVelocity().z = Math.min(this.getVelocity().z + Player.AIR_MOVE_ACCELERATION, Player.GROUND_MOVE_SPEED);
-            } else if (InputManager.getInstance().isKeyPressed(sKey)) {
-                this.getVelocity().z = Math.max(this.getVelocity().z - Player.AIR_MOVE_ACCELERATION, -Player.GROUND_MOVE_SPEED);
-            } else {
-                this.getVelocity().z = (Math.abs(this.getVelocity().z) < Player.AIR_MOVE_ACCELERATION) ? 0 : this.getVelocity().z + Player.AIR_MOVE_ACCELERATION * Math.sign(this.getVelocity().z) * -1;
-            }
-            if (InputManager.getInstance().isKeyPressed(aKey)) {
-                this.getVelocity().x = Math.max(this.getVelocity().x - Player.AIR_MOVE_ACCELERATION, -Player.GROUND_MOVE_SPEED);
-            } else if (InputManager.getInstance().isKeyPressed(dKey)) {
-                this.getVelocity().x = Math.min(this.getVelocity().x + Player.AIR_MOVE_ACCELERATION, Player.GROUND_MOVE_SPEED);
-            } else {
-                this.getVelocity().x = (Math.abs(this.getVelocity().x) < Player.AIR_MOVE_ACCELERATION) ? 0 : this.getVelocity().x + Player.AIR_MOVE_ACCELERATION * Math.sign(this.getVelocity().x) * -1;
-            }
-            if (InputManager.getInstance().isKeyPressed('e')) {
+            this.getVelocity().addInPlace(movement.scale(Player.AIR_MOVE_ACCELERATION));
+            const xzMovement = this.getVelocity().clone();
+            xzMovement.y = 0;
+            const xzLen = xzMovement.length();
+            // clamp the players velocity, don't allow them to move any faster in the air than on ground
+            if (xzLen > Player.GROUND_MOVE_SPEED)
+                xzMovement.normalize().scaleInPlace(Player.GROUND_MOVE_SPEED);
+            // drift back into resting if the control stick isn't moving
+            if (movement.lengthSquared() == 0 && xzLen <= (Player.AIR_MOVE_ACCELERATION / 2))
+                xzMovement.setAll(0);
+            else if (movement.lengthSquared() == 0)
+                xzMovement.normalize().scaleInPlace(xzLen - Player.AIR_MOVE_ACCELERATION / 2);
+            xzMovement.y = this.getVelocity().y;
+            this.getVelocity().copyFrom(xzMovement);
+
+            // the player can ground-pound while in the air
+            if (InputManager.getInstance().isKeyPressed(InputManager.KEY_DOWN)) {
                 this.getVelocity().y = -Player.CRUSH_IMPULSE;
             }
         }

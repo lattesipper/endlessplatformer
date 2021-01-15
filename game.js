@@ -7,8 +7,8 @@ var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, ge
         step((generator = generator.apply(thisArg, _arguments || [])).next());
     });
 };
-// import * as BABYLON from 'babylonjs';
-// import * as BABYLON_MATERIALS from 'babylonjs-materials';
+import * as BABYLON from 'babylonjs';
+import * as BABYLON_MATERIALS from 'babylonjs-materials';
 window.addEventListener('DOMContentLoaded', () => {
     // Create canvas and engine.
     const canvas = (document.getElementById('renderCanvas'));
@@ -250,6 +250,7 @@ window.addEventListener('DOMContentLoaded', () => {
         }
         returnMesh(instance) {
             instance.isVisible = false;
+            instance.unfreezeWorldMatrix();
             this.instances.push(instance);
         }
     }
@@ -261,26 +262,72 @@ window.addEventListener('DOMContentLoaded', () => {
         constructor() {
             this.onKeyDown = new NamedEvent();
             this.onKeyUp = new NamedEvent();
+            this.leftStickOffset = new BABYLON.Vector2();
+            this.rightStickOffset = new BABYLON.Vector2();
             this.inputMap = new Map();
             this.registerActions();
         }
         registerActions() {
+            const keyboardkey_to_virtkey = new Map([
+                [' ', InputManager.KEY_RIGHT], ['arrowleft', InputManager.KEY_RIGHTTRIGGER], ['arrowright', InputManager.KEY_LEFTTRIGGER],
+                ['p', InputManager.KEY_START],
+                ['w', InputManager.KEY_W], ['d', InputManager.KEY_D], ['s', InputManager.KEY_S], ['a', InputManager.KEY_A]
+            ]);
+            const gamepadkey_to_virtkey = new Map([
+                [3, InputManager.KEY_UP],
+                [1, InputManager.KEY_RIGHT],
+                [0, InputManager.KEY_DOWN],
+                [2, InputManager.KEY_LEFT],
+                [9, InputManager.KEY_START]
+            ]);
+            const handleGamepadkey = (keydown, virtkey) => {
+                if (!virtkey)
+                    return;
+                this.inputMap.set(virtkey, keydown);
+                (keydown ? this.onKeyDown : this.onKeyUp).fire(virtkey);
+            };
+            this.gamepadManager = new BABYLON.GamepadManager();
+            this.gamepadManager.onGamepadConnectedObservable.add((gamepad, state) => {
+                if (gamepad instanceof BABYLON.Xbox360Pad || gamepad instanceof BABYLON.DualShockPad || gamepad instanceof BABYLON.GenericPad) {
+                    gamepad.onButtonDownObservable.add((button, state) => handleGamepadkey(true, gamepadkey_to_virtkey.get(button)));
+                    gamepad.onButtonUpObservable.add((button, state) => handleGamepadkey(false, gamepadkey_to_virtkey.get(button)));
+                }
+                gamepad.onleftstickchanged((values) => { this.leftStickOffset.x = values.x; this.leftStickOffset.y = values.y; });
+                gamepad.onrightstickchanged((values) => { this.rightStickOffset.x = values.x; this.rightStickOffset.y = values.y; });
+            });
             scene.actionManager = new BABYLON.ActionManager(scene);
-            scene.actionManager.registerAction(new BABYLON.ExecuteCodeAction(BABYLON.ActionManager.OnKeyDownTrigger, (evt) => {
-                const key = evt.sourceEvent.key.toLowerCase();
-                this.inputMap.set(key, true);
-                this.onKeyDown.fire(key);
-            }));
-            scene.actionManager.registerAction(new BABYLON.ExecuteCodeAction(BABYLON.ActionManager.OnKeyUpTrigger, (evt) => {
-                const key = evt.sourceEvent.key.toLowerCase();
-                this.inputMap.set(key, false);
-                this.onKeyUp.fire(key);
-            }));
+            scene.actionManager.registerAction(new BABYLON.ExecuteCodeAction(BABYLON.ActionManager.OnKeyDownTrigger, (evt) => handleGamepadkey(true, keyboardkey_to_virtkey.get(evt.sourceEvent.key.toLowerCase()))));
+            scene.actionManager.registerAction(new BABYLON.ExecuteCodeAction(BABYLON.ActionManager.OnKeyUpTrigger, (evt) => handleGamepadkey(false, keyboardkey_to_virtkey.get(evt.sourceEvent.key.toLowerCase()))));
         }
         static getInstance() { return this.instance; }
         isKeyPressed(key) { return this.inputMap.get(key); }
         ;
+        getLeftStickOffset() {
+            if (this.gamepadManager.gamepads.length == 0) {
+                this.leftStickOffset.set(0, 0);
+                if (this.isKeyPressed(InputManager.KEY_W))
+                    this.leftStickOffset.y = 1;
+                if (this.isKeyPressed(InputManager.KEY_D))
+                    this.leftStickOffset.x = 1;
+                if (this.isKeyPressed(InputManager.KEY_S))
+                    this.leftStickOffset.y = -1;
+                if (this.isKeyPressed(InputManager.KEY_A))
+                    this.leftStickOffset.x = -1;
+            }
+            return this.leftStickOffset;
+        }
     }
+    InputManager.KEY_UP = 0;
+    InputManager.KEY_RIGHT = 1;
+    InputManager.KEY_DOWN = 2;
+    InputManager.KEY_LEFT = 3;
+    InputManager.KEY_LEFTTRIGGER = 4;
+    InputManager.KEY_RIGHTTRIGGER = 5;
+    InputManager.KEY_W = 6;
+    InputManager.KEY_D = 7;
+    InputManager.KEY_S = 8;
+    InputManager.KEY_A = 9;
+    InputManager.KEY_START = 10;
     InputManager.instance = new InputManager();
     // Singleton camera, rotates in 90 degree increments
     class GameCamera {
@@ -309,8 +356,8 @@ window.addEventListener('DOMContentLoaded', () => {
         setupRotateKeyListener() {
             scene.onBeforeRenderObservable.add(() => {
                 const canRotate = !this.rotating && game && !game.isPaused();
-                const rotateRight = InputManager.getInstance().isKeyPressed('arrowright');
-                const rotateLeft = InputManager.getInstance().isKeyPressed('arrowleft');
+                const rotateRight = InputManager.getInstance().isKeyPressed(InputManager.KEY_LEFTTRIGGER);
+                const rotateLeft = InputManager.getInstance().isKeyPressed(InputManager.KEY_RIGHTTRIGGER);
                 if ((rotateLeft || rotateRight) && canRotate) {
                     const animationBox = new BABYLON.Animation("myAnimation", "alpha", 60, BABYLON.Animation.ANIMATIONTYPE_FLOAT, BABYLON.Animation.ANIMATIONLOOPMODE_CONSTANT);
                     animationBox.setKeys([{ frame: 0, value: this.camera.alpha }, { frame: 20, value: this.camera.alpha + (Math.PI / 2) * (rotateRight ? 1 : -1) }]);
@@ -383,7 +430,8 @@ window.addEventListener('DOMContentLoaded', () => {
             // setup pause callback
             InputManager.getInstance().onKeyDown.addListener((key) => {
                 switch (key) {
-                    case 'p':
+                    case InputManager.KEY_START:
+                        alert("TEST");
                         if (!this.canPause)
                             break;
                         if (!this.context.isPaused()) {
@@ -468,6 +516,7 @@ window.addEventListener('DOMContentLoaded', () => {
     }
     class Game {
         constructor() {
+            // events
             this.onDispose = new NamedEvent();
             this.running = true;
             // sorted entities
@@ -486,7 +535,7 @@ window.addEventListener('DOMContentLoaded', () => {
                 const lava = BABYLON.Mesh.CreateGround("ground", 150, 150, 25, scene);
                 lava.visibility = 0.5;
                 lava.position.y = -20;
-                const lavaMaterial = new BABYLON.LavaMaterial("lava", scene);
+                const lavaMaterial = new BABYLON_MATERIALS.LavaMaterial("lava", scene);
                 lavaMaterial.noiseTexture = yield ResourceLoader.getInstance().loadTexture("cloud.png", 72018); // Set the bump texture
                 lavaMaterial.diffuseTexture = yield ResourceLoader.getInstance().loadTexture("lavatile.jpg", 457155); // Set the diffuse texture
                 lavaMaterial.speed = 0.5;
@@ -651,6 +700,7 @@ window.addEventListener('DOMContentLoaded', () => {
     // GAME CONSTANTS
     Game.UPDATE_FREQUENCY_PER_SECOND = 60;
     Game.MAXIMUM_YDISTANCE_UNDER_LAVA = 100;
+    // Enum-like class for definining collision groups
     class CollisionGroups {
         collides(otherGroup) { return CollisionGroups.collisionMap.get(this).has(otherGroup); }
     }
@@ -683,6 +733,7 @@ window.addEventListener('DOMContentLoaded', () => {
                 [Sides.Left, new Set()], [Sides.Right, new Set()], [Sides.Top, new Set()], [Sides.Bottom, new Set()], [Sides.Forward, new Set()], [Sides.Back, new Set()], [Sides.Unknown, new Set()]
             ]);
             this.collisionBuffers = new Map([[Sides.Left, 0], [Sides.Right, 0], [Sides.Top, 0], [Sides.Bottom, 0], [Sides.Forward, 0], [Sides.Back, 0]]);
+            this.onDispose = new NamedEvent();
             this.onFreezeStateChange = new NamedEvent();
             // momentum
             this.velocity = BABYLON.Vector3.Zero();
@@ -695,7 +746,7 @@ window.addEventListener('DOMContentLoaded', () => {
             this.instance = null;
         }
         // destructor
-        dispose() { this.endObservation(); this.disposed = true; }
+        dispose() { this.endObservation(); this.onDispose.fire(); this.disposed = true; }
         isDisposed() { return this.disposed; }
         // physical properties
         setNormalizedSize(size) { this.size.copyFrom(size); return this; }
@@ -722,8 +773,20 @@ window.addEventListener('DOMContentLoaded', () => {
                 this.instance.isVisible = true;
             this.active = true;
         }
-        freeze() { this.frozen = true; this.onFreezeStateChange.fire(true); return this; }
-        unfreeze() { this.frozen = false; this.onFreezeStateChange.fire(false); return this; }
+        freeze() {
+            this.frozen = true;
+            this.onFreezeStateChange.fire(true);
+            if (this.instance)
+                this.instance.freezeWorldMatrix();
+            return this;
+        }
+        unfreeze() {
+            this.frozen = false;
+            this.onFreezeStateChange.fire(false);
+            if (this.instance)
+                this.instance.unfreezeWorldMatrix();
+            return this;
+        }
         isFrozen() { return this.frozen; }
         // collisions
         getCollisionGroup() { return this.collisionGroup; }
@@ -733,7 +796,9 @@ window.addEventListener('DOMContentLoaded', () => {
         getCollisionBuffer(side) { return this.collisionBuffers.get(side); }
         setCollisionBuffer(side, extent) { return this.collisionBuffers.set(side, extent); }
         clearCollisionBuffer() { Sides.All.forEach(side => this.collisionBuffers.set(side, 0)); }
+        // should the physbox register a collision with the other? (ghost collision)
         logicallyIntersects(otherBox) { return this.getCollisionGroup().collides(otherBox.getCollisionGroup()); }
+        // does the physbox physically collide with another? (solid collision)
         physicallyIntersects(otherBox) {
             // physboxes can't collide with themselves
             if (otherBox == this)
@@ -753,6 +818,8 @@ window.addEventListener('DOMContentLoaded', () => {
             this.instance = this.getMeshPool().getMesh();
             this.instance.scaling = BABYLON.Vector3.One().scale(this.scaling);
             this.instance.position = this.getPos();
+            if (this.frozen)
+                this.instance.freezeWorldMatrix();
             this.afterStartObservation();
         }
         endObservation() {
@@ -1221,36 +1288,8 @@ window.addEventListener('DOMContentLoaded', () => {
             // }
         }
         determineVelocities() {
-            let wKey;
-            let aKey;
-            let sKey;
-            let dKey;
-            switch (camera.getRotationIndex()) {
-                case 1:
-                    wKey = 'd';
-                    aKey = 'w';
-                    sKey = 'a';
-                    dKey = 's';
-                    break;
-                case 2:
-                    wKey = 's';
-                    aKey = 'd';
-                    sKey = 'w';
-                    dKey = 'a';
-                    break;
-                case 3:
-                    wKey = 'a';
-                    aKey = 's';
-                    sKey = 'd';
-                    dKey = 'w';
-                    break;
-                case 0:
-                    wKey = 'w';
-                    aKey = 'a';
-                    sKey = 's';
-                    dKey = 'd';
-                    break;
-            }
+            const offset = InputManager.getInstance().getLeftStickOffset();
+            const movement = BABYLON.Vector3.TransformCoordinates(new BABYLON.Vector3(offset.x, 0, offset.y), BABYLON.Matrix.RotationYawPitchRoll(-(Math.PI / 2) * camera.getRotationIndex(), 0, 0));
             const mesh = this.getMeshInstance();
             // update rotation animation
             const maxLeanAngle = 0.15;
@@ -1274,7 +1313,7 @@ window.addEventListener('DOMContentLoaded', () => {
                     if (this.getCollisions(side).size) {
                         count += this.getCollisions(side).size;
                         this.getCollisions(side).forEach((physBox) => avgYSpeed += physBox.getVelocity().y);
-                        if (InputManager.getInstance().isKeyPressed(' ')) {
+                        if (InputManager.getInstance().isKeyPressed(InputManager.KEY_RIGHT)) {
                             this.getVelocity()[side.dim] = Player.SIDE_XZ_IMPULSE * side.direction * -1;
                             this.getVelocity().y = Player.SIDE_JUMP_IMPULSE;
                             if (!Player.SOUND_HIT_HEAD.isPlaying)
@@ -1285,7 +1324,7 @@ window.addEventListener('DOMContentLoaded', () => {
                     }
                 });
             }
-            if (count && !InputManager.getInstance().isKeyPressed(' ')) {
+            if (count && !InputManager.getInstance().isKeyPressed(InputManager.KEY_RIGHT)) {
                 avgYSpeed /= count; // find average speed of the boxes the player is pressing against
                 avgYSpeed -= Player.SIDE_SLIDE_SPEED; // and add the slide speed to find the players velocity when sliding  
                 // only let the player slide if their velocity is already less than this speed (don't allow them to stick automatically, they have to fall a bit first)
@@ -1300,25 +1339,8 @@ window.addEventListener('DOMContentLoaded', () => {
             }
             // grounded, apply movement velocity instantaneously
             if (this.getCollisions(Sides.Bottom).size) {
-                if (InputManager.getInstance().isKeyPressed(wKey)) {
-                    this.getVelocity().z = Player.GROUND_MOVE_SPEED;
-                }
-                else if (InputManager.getInstance().isKeyPressed(sKey)) {
-                    this.getVelocity().z = -Player.GROUND_MOVE_SPEED;
-                }
-                else {
-                    this.getVelocity().z = 0;
-                }
-                if (InputManager.getInstance().isKeyPressed(aKey)) {
-                    this.getVelocity().x = -Player.GROUND_MOVE_SPEED;
-                }
-                else if (InputManager.getInstance().isKeyPressed(dKey)) {
-                    this.getVelocity().x = Player.GROUND_MOVE_SPEED;
-                }
-                else {
-                    this.getVelocity().x = 0;
-                }
-                if (InputManager.getInstance().isKeyPressed(' ')) {
+                this.setVelocity(movement.scale(Player.GROUND_MOVE_SPEED));
+                if (InputManager.getInstance().isKeyPressed(InputManager.KEY_RIGHT)) {
                     if (!Player.SOUND_HIT_HEAD.isPlaying)
                         Player.SOUND_JUMP.play();
                     this.getVelocity().y = Player.JUMP_IMPULSE;
@@ -1326,25 +1348,22 @@ window.addEventListener('DOMContentLoaded', () => {
             }
             // in-air, apply movement velocity through acceleration
             else {
-                if (InputManager.getInstance().isKeyPressed(wKey)) {
-                    this.getVelocity().z = Math.min(this.getVelocity().z + Player.AIR_MOVE_ACCELERATION, Player.GROUND_MOVE_SPEED);
-                }
-                else if (InputManager.getInstance().isKeyPressed(sKey)) {
-                    this.getVelocity().z = Math.max(this.getVelocity().z - Player.AIR_MOVE_ACCELERATION, -Player.GROUND_MOVE_SPEED);
-                }
-                else {
-                    this.getVelocity().z = (Math.abs(this.getVelocity().z) < Player.AIR_MOVE_ACCELERATION) ? 0 : this.getVelocity().z + Player.AIR_MOVE_ACCELERATION * Math.sign(this.getVelocity().z) * -1;
-                }
-                if (InputManager.getInstance().isKeyPressed(aKey)) {
-                    this.getVelocity().x = Math.max(this.getVelocity().x - Player.AIR_MOVE_ACCELERATION, -Player.GROUND_MOVE_SPEED);
-                }
-                else if (InputManager.getInstance().isKeyPressed(dKey)) {
-                    this.getVelocity().x = Math.min(this.getVelocity().x + Player.AIR_MOVE_ACCELERATION, Player.GROUND_MOVE_SPEED);
-                }
-                else {
-                    this.getVelocity().x = (Math.abs(this.getVelocity().x) < Player.AIR_MOVE_ACCELERATION) ? 0 : this.getVelocity().x + Player.AIR_MOVE_ACCELERATION * Math.sign(this.getVelocity().x) * -1;
-                }
-                if (InputManager.getInstance().isKeyPressed('e')) {
+                this.getVelocity().addInPlace(movement.scale(Player.AIR_MOVE_ACCELERATION));
+                const xzMovement = this.getVelocity().clone();
+                xzMovement.y = 0;
+                const xzLen = xzMovement.length();
+                // clamp the players velocity, don't allow them to move any faster in the air than on ground
+                if (xzLen > Player.GROUND_MOVE_SPEED)
+                    xzMovement.normalize().scaleInPlace(Player.GROUND_MOVE_SPEED);
+                // drift back into resting if the control stick isn't moving
+                if (movement.lengthSquared() == 0 && xzLen <= (Player.AIR_MOVE_ACCELERATION / 2))
+                    xzMovement.setAll(0);
+                else if (movement.lengthSquared() == 0)
+                    xzMovement.normalize().scaleInPlace(xzLen - Player.AIR_MOVE_ACCELERATION / 2);
+                xzMovement.y = this.getVelocity().y;
+                this.getVelocity().copyFrom(xzMovement);
+                // the player can ground-pound while in the air
+                if (InputManager.getInstance().isKeyPressed(InputManager.KEY_DOWN)) {
                     this.getVelocity().y = -Player.CRUSH_IMPULSE;
                 }
             }
