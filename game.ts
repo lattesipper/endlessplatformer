@@ -264,19 +264,29 @@ class InputManager {
             [1, InputManager.KEY_RIGHT],
             [0, InputManager.KEY_DOWN],
             [2, InputManager.KEY_LEFT],
-            [9, InputManager.KEY_START]
+            [9, InputManager.KEY_START],
+            [12, InputManager.KEY_W],
+            [15, InputManager.KEY_D],
+            [13, InputManager.KEY_S],
+            [14, InputManager.KEY_A],
+            [4, InputManager.KEY_LEFTTRIGGER],
+            [5, InputManager.KEY_RIGHTTRIGGER]
         ]);
 
         const handleGamepadkey = (keydown, virtkey) => {
             if (!virtkey)
                 return;
+            if (virtkey == 11)
+                alert("TEST");
             this.inputMap.set(virtkey, keydown);
             (keydown ? this.onKeyDown : this.onKeyUp).fire(virtkey);
         };
 
         this.gamepadManager = new BABYLON.GamepadManager();
         this.gamepadManager.onGamepadConnectedObservable.add((gamepad, state) => {
-            if (gamepad instanceof BABYLON.Xbox360Pad || gamepad instanceof BABYLON.DualShockPad || gamepad instanceof BABYLON.GenericPad) {
+            if (gamepad instanceof BABYLON.Xbox360Pad || gamepad instanceof BABYLON.DualShockPad) {
+                gamepad.ondpaddown((button) => handleGamepadkey(true, gamepadkey_to_virtkey.get(button)));
+                gamepad.ondpadup((button) => handleGamepadkey(false, gamepadkey_to_virtkey.get(button)));
                 gamepad.onButtonDownObservable.add((button, state) => handleGamepadkey(true, gamepadkey_to_virtkey.get(button)));
                 gamepad.onButtonUpObservable.add((button, state) => handleGamepadkey(false, gamepadkey_to_virtkey.get(button)));
             }
@@ -293,15 +303,27 @@ class InputManager {
     public static getInstance() : InputManager { return this.instance; }
     public isKeyPressed(key: number) : boolean { return this.inputMap.get(key); };
 
+    public getDpadOffset(): BABYLON.Vector2 {
+        const offset = new BABYLON.Vector2();
+        if (this.isKeyPressed(InputManager.KEY_W)) offset.y = 1;
+        if (this.isKeyPressed(InputManager.KEY_D)) offset.x = 1;
+        if (this.isKeyPressed(InputManager.KEY_S)) offset.y = -1;
+        if (this.isKeyPressed(InputManager.KEY_A)) offset.x = -1;
+        return offset;
+    }
     public getLeftStickOffset(): BABYLON.Vector2 {
+        const offset = new BABYLON.Vector2();
         if (this.gamepadManager.gamepads.length == 0) {
-            this.leftStickOffset.set(0, 0);
-            if (this.isKeyPressed(InputManager.KEY_W)) this.leftStickOffset.y = 1;
-            if (this.isKeyPressed(InputManager.KEY_D)) this.leftStickOffset.x = 1;
-            if (this.isKeyPressed(InputManager.KEY_S)) this.leftStickOffset.y = -1;
-            if (this.isKeyPressed(InputManager.KEY_A)) this.leftStickOffset.x = -1;
-        } 
-        return this.leftStickOffset;
+            if (this.isKeyPressed(InputManager.KEY_W)) offset.y = 1;
+            if (this.isKeyPressed(InputManager.KEY_D)) offset.x = 1;
+            if (this.isKeyPressed(InputManager.KEY_S)) offset.y = -1;
+            if (this.isKeyPressed(InputManager.KEY_A)) offset.x = -1;
+        } else {
+            offset.set(this.leftStickOffset.x, -this.leftStickOffset.y);
+            if (offset.length() < 0.1)
+                offset.set(0, 0);
+        }
+        return offset;
     }
 
     public onKeyDown: NamedEvent<(virtKey: number) => void> = new NamedEvent();
@@ -344,8 +366,8 @@ class GameCamera {
     private setupRotateKeyListener() {
         scene.onBeforeRenderObservable.add(() => {
             const canRotate : boolean = !this.rotating && game && !game.isPaused();
-            const rotateRight : boolean = InputManager.getInstance().isKeyPressed(InputManager.KEY_LEFTTRIGGER);
-            const rotateLeft : boolean = InputManager.getInstance().isKeyPressed(InputManager.KEY_RIGHTTRIGGER);
+            const rotateRight : boolean = InputManager.getInstance().isKeyPressed(InputManager.KEY_RIGHTTRIGGER);
+            const rotateLeft : boolean = InputManager.getInstance().isKeyPressed(InputManager.KEY_LEFTTRIGGER);
             if ((rotateLeft || rotateRight) && canRotate) {
                 const animationBox : BABYLON.Animation = new BABYLON.Animation("myAnimation", "alpha", 60, BABYLON.Animation.ANIMATIONTYPE_FLOAT, BABYLON.Animation.ANIMATIONLOOPMODE_CONSTANT);
                 animationBox.setKeys([ { frame: 0, value: this.camera.alpha }, { frame: 20, value: this.camera.alpha + (Math.PI / 2) * (rotateRight ? 1 : -1)} ]);
@@ -609,7 +631,7 @@ class Game implements IDisposable {
         this.ySortBoxes();
         const physboxes = this.getPhysBoxesInRange(this.lava.position.y - Game.MAXIMUM_YDISTANCE_UNDER_LAVA, Number.POSITIVE_INFINITY);
         physboxes.forEach(pbox => pbox.beforeCollisions(deltaT));
-        physboxes.forEach(pbox => pbox.resolveCollisions(0));
+        physboxes.forEach(pbox => pbox.resolveCollisions(deltaT));
         physboxes.forEach(pbox => pbox.afterCollisions(deltaT));
         this.updateVisiblePhysBoxes();
     }
@@ -888,7 +910,7 @@ abstract class PhysBox implements IDisposable {
             return;
 
         // update velocity
-        this.velocity.y = Math.max(this.getVelocity().y - this.gravity, -this.terminalVelocity);
+        this.velocity.y = Math.max(this.getVelocity().y - this.gravity * t, -this.terminalVelocity);
 
         // extend our collision boundaries so they encompass all physboxes we may collide with after the velocity has been applied
         if (this.getVelocity().x >= 0)
@@ -1076,7 +1098,7 @@ class StartLevel extends Level {
             const coin = new Coin();
             coin.setPos(fallBox.getPos());
             coin.setSide(Sides.Bottom, fallBox.getSide(Sides.Top));
-            coin.setGravity(0.05);
+            coin.setGravity(9);
             game.addPhysBox(coin);
         }
         fallBox.clearCollisionBuffer();
@@ -1460,7 +1482,7 @@ class Player extends PhysBox {
     // Damage
     private static DAMAGE_MOVE_IMPULSE = 0.4;
     // Gravity & Max speed
-    private static GRAVITY = 0.015;
+    private static GRAVITY = 0.9;
     private static MAX_Y_SPEED = 0.5;
 
     public onDeath: NamedEvent<() => void> = new NamedEvent();
