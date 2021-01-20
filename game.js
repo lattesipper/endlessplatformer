@@ -7,8 +7,8 @@ var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, ge
         step((generator = generator.apply(thisArg, _arguments || [])).next());
     });
 };
-import * as BABYLON from 'babylonjs';
-import * as BABYLON_MATERIALS from 'babylonjs-materials';
+// import * as BABYLON from 'babylonjs';
+// import * as BABYLON_MATERIALS from 'babylonjs-materials';
 window.addEventListener('DOMContentLoaded', () => {
     // Create canvas and engine.
     const canvas = (document.getElementById('renderCanvas'));
@@ -112,7 +112,7 @@ window.addEventListener('DOMContentLoaded', () => {
             const ratioToAdd = bytes / ResourceLoader.TOTAL_RESOURCES_SIZE_IN_BYTES;
             this.loadedRatio += ratioToAdd;
             this.onLoadingProgress.fire(ratioToAdd);
-            if (this.loadedRatio == 1)
+            if (this.loadedRatio >= 1)
                 this.finishLoading();
         }
         finishLoading() {
@@ -123,7 +123,7 @@ window.addEventListener('DOMContentLoaded', () => {
         }
     }
     ResourceLoader.instance = new ResourceLoader();
-    ResourceLoader.TOTAL_RESOURCES_SIZE_IN_BYTES = 8022788;
+    ResourceLoader.TOTAL_RESOURCES_SIZE_IN_BYTES = 8022788 - 497646;
     ResourceLoader.RESOURCE_PATH = 'https://raw.githubusercontent.com/lattesipper/endlessplatformer/master/resources';
     class UtilityFunctions {
         static fadeSound(sound, fadeTimeInSeconds, targetVolume, easingFunction = (t) => t, onDone = () => { }) {
@@ -269,7 +269,7 @@ window.addEventListener('DOMContentLoaded', () => {
         }
         registerActions() {
             const keyboardkey_to_virtkey = new Map([
-                [' ', InputManager.KEY_RIGHT], ['arrowleft', InputManager.KEY_RIGHTTRIGGER], ['arrowright', InputManager.KEY_LEFTTRIGGER],
+                [' ', InputManager.KEY_RIGHT], ['arrowleft', InputManager.KEY_LEFTTRIGGER], ['arrowright', InputManager.KEY_RIGHTTRIGGER],
                 ['p', InputManager.KEY_START],
                 ['w', InputManager.KEY_W], ['d', InputManager.KEY_D], ['s', InputManager.KEY_S], ['a', InputManager.KEY_A]
             ]);
@@ -562,7 +562,7 @@ window.addEventListener('DOMContentLoaded', () => {
                 const lava = BABYLON.Mesh.CreateGround("ground", 150, 150, 25, scene);
                 lava.visibility = 0.5;
                 lava.position.y = -20;
-                const lavaMaterial = new BABYLON_MATERIALS.LavaMaterial("lava", scene);
+                const lavaMaterial = new BABYLON.LavaMaterial("lava", scene);
                 lavaMaterial.noiseTexture = yield ResourceLoader.getInstance().loadTexture("cloud.png", 72018); // Set the bump texture
                 lavaMaterial.diffuseTexture = yield ResourceLoader.getInstance().loadTexture("lavatile.jpg", 457155); // Set the diffuse texture
                 lavaMaterial.speed = 0.5;
@@ -1203,7 +1203,10 @@ window.addEventListener('DOMContentLoaded', () => {
         }
         static LoadResources() {
             return __awaiter(this, void 0, void 0, function* () {
-                this.MESH_POOL = yield MeshPool.FromResources(300, MeshPool.POOLTYPE_INSTANCE, 'basicbox.obj', 397646);
+                const mesh = BABYLON.MeshBuilder.CreateBox('', { size: 1 }, scene);
+                const material = new BABYLON.StandardMaterial('', scene);
+                mesh.material = material;
+                this.MESH_POOL = yield MeshPool.FromExisting(300, MeshPool.POOLTYPE_INSTANCE, mesh, 0);
             });
         }
         getMeshPool() {
@@ -1366,7 +1369,8 @@ window.addEventListener('DOMContentLoaded', () => {
             }
             // grounded, apply movement velocity instantaneously
             if (this.getCollisions(Sides.Bottom).size) {
-                this.setVelocity(movement.scale(Player.GROUND_MOVE_SPEED));
+                const xzMovement = movement.scale(Player.GROUND_MOVE_SPEED);
+                this.getVelocity().copyFromFloats(xzMovement.x, this.getVelocity().y, xzMovement.z);
                 if (InputManager.getInstance().isKeyPressed(InputManager.KEY_RIGHT)) {
                     if (!Player.SOUND_HIT_HEAD.isPlaying)
                         Player.SOUND_JUMP.play();
@@ -1375,9 +1379,7 @@ window.addEventListener('DOMContentLoaded', () => {
             }
             // in-air, apply movement velocity through acceleration
             else {
-                this.getVelocity().addInPlace(movement.scale(Player.AIR_MOVE_ACCELERATION));
-                const xzMovement = this.getVelocity().clone();
-                xzMovement.y = 0;
+                const xzMovement = movement.scale(Player.AIR_MOVE_ACCELERATION).addInPlaceFromFloats(this.getVelocity().x, 0, this.getVelocity().z);
                 const xzLen = xzMovement.length();
                 // clamp the players velocity, don't allow them to move any faster in the air than on ground
                 if (xzLen > Player.GROUND_MOVE_SPEED)
@@ -1387,8 +1389,8 @@ window.addEventListener('DOMContentLoaded', () => {
                     xzMovement.setAll(0);
                 else if (movement.lengthSquared() == 0)
                     xzMovement.normalize().scaleInPlace(xzLen - Player.AIR_MOVE_ACCELERATION / 2);
-                xzMovement.y = this.getVelocity().y;
-                this.getVelocity().copyFrom(xzMovement);
+                ;
+                this.getVelocity().copyFromFloats(xzMovement.x, this.getVelocity().y, xzMovement.z);
                 // the player can ground-pound while in the air
                 if (InputManager.getInstance().isKeyPressed(InputManager.KEY_DOWN)) {
                     this.getVelocity().y = -Player.CRUSH_IMPULSE;

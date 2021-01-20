@@ -100,7 +100,7 @@ class ResourceLoader {
         const ratioToAdd = bytes / ResourceLoader.TOTAL_RESOURCES_SIZE_IN_BYTES;
         this.loadedRatio += ratioToAdd;
         this.onLoadingProgress.fire(ratioToAdd);
-        if (this.loadedRatio == 1)
+        if (this.loadedRatio >= 1)
             this.finishLoading();
     }
     private finishLoading() {
@@ -114,7 +114,7 @@ class ResourceLoader {
     public onLoadingFinish: NamedEvent<() => void> = new NamedEvent();
     private loadedRatio: number = 0;
     private static instance: ResourceLoader = new ResourceLoader();
-    private static TOTAL_RESOURCES_SIZE_IN_BYTES: number = 8022788;
+    private static TOTAL_RESOURCES_SIZE_IN_BYTES: number = 8022788 - 497646;
     private static RESOURCE_PATH = 'https://raw.githubusercontent.com/lattesipper/endlessplatformer/master/resources';
 }
 class UtilityFunctions {
@@ -255,7 +255,7 @@ class InputManager {
     }
     private registerActions() {
         const keyboardkey_to_virtkey: Map<string, number> = new Map([
-            [' ', InputManager.KEY_RIGHT], ['arrowleft', InputManager.KEY_RIGHTTRIGGER], ['arrowright', InputManager.KEY_LEFTTRIGGER],
+            [' ', InputManager.KEY_RIGHT], ['arrowleft', InputManager.KEY_LEFTTRIGGER], ['arrowright', InputManager.KEY_RIGHTTRIGGER],
             ['p', InputManager.KEY_START],
             ['w', InputManager.KEY_W], ['d', InputManager.KEY_D], ['s', InputManager.KEY_S], ['a', InputManager.KEY_A]
         ]);
@@ -1236,7 +1236,10 @@ abstract class FallBox extends PhysBox {
 
 class FallBoxBasic extends FallBox {
     public static async LoadResources() {
-        this.MESH_POOL = await MeshPool.FromResources(300, MeshPool.POOLTYPE_INSTANCE, 'basicbox.obj', 397646);
+        const mesh = BABYLON.MeshBuilder.CreateBox('', { size: 1 }, scene);
+        const material = new BABYLON.StandardMaterial('', scene);
+        mesh.material = material;
+        this.MESH_POOL = await MeshPool.FromExisting(300, MeshPool.POOLTYPE_INSTANCE, mesh, 0);
     }
     public constructor() {
         super();
@@ -1405,7 +1408,8 @@ class Player extends PhysBox {
 
         // grounded, apply movement velocity instantaneously
         if (this.getCollisions(Sides.Bottom).size) {
-            this.setVelocity(movement.scale(Player.GROUND_MOVE_SPEED));
+            const xzMovement = movement.scale(Player.GROUND_MOVE_SPEED);
+            this.getVelocity().copyFromFloats(xzMovement.x, this.getVelocity().y, xzMovement.z);
             if (InputManager.getInstance().isKeyPressed(InputManager.KEY_RIGHT)) {
                 if (!Player.SOUND_HIT_HEAD.isPlaying) Player.SOUND_JUMP.play();
                 this.getVelocity().y = Player.JUMP_IMPULSE;
@@ -1413,9 +1417,7 @@ class Player extends PhysBox {
         } 
         // in-air, apply movement velocity through acceleration
         else {
-            this.getVelocity().addInPlace(movement.scale(Player.AIR_MOVE_ACCELERATION));
-            const xzMovement = this.getVelocity().clone();
-            xzMovement.y = 0;
+            const xzMovement = movement.scale(Player.AIR_MOVE_ACCELERATION).addInPlaceFromFloats(this.getVelocity().x, 0, this.getVelocity().z);
             const xzLen = xzMovement.length();
             // clamp the players velocity, don't allow them to move any faster in the air than on ground
             if (xzLen > Player.GROUND_MOVE_SPEED)
@@ -1424,9 +1426,8 @@ class Player extends PhysBox {
             if (movement.lengthSquared() == 0 && xzLen <= (Player.AIR_MOVE_ACCELERATION / 2))
                 xzMovement.setAll(0);
             else if (movement.lengthSquared() == 0)
-                xzMovement.normalize().scaleInPlace(xzLen - Player.AIR_MOVE_ACCELERATION / 2);
-            xzMovement.y = this.getVelocity().y;
-            this.getVelocity().copyFrom(xzMovement);
+                xzMovement.normalize().scaleInPlace(xzLen - Player.AIR_MOVE_ACCELERATION / 2);;
+            this.getVelocity().copyFromFloats(xzMovement.x, this.getVelocity().y, xzMovement.z);
 
             // the player can ground-pound while in the air
             if (InputManager.getInstance().isKeyPressed(InputManager.KEY_DOWN)) {
