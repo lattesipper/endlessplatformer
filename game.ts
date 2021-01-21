@@ -1,5 +1,5 @@
 import * as BABYLON from 'babylonjs';
-import { Scene, BackEase, Mesh, GamepadManager } from 'babylonjs';
+import { Scene, BackEase, Mesh, GamepadManager, PhysicsEngine } from 'babylonjs';
 import * as BABYLON_MATERIALS from 'babylonjs-materials'
 
 window.addEventListener('DOMContentLoaded', () => {
@@ -578,13 +578,11 @@ class Game implements IDisposable {
         bottomBox
                 .freeze()
                 .setPos(new BABYLON.Vector3(0, 0, 0));
-        this.addPhysBox(bottomBox);
 
         // create the player
         const player = new Player();
         player.setPos(new BABYLON.Vector3(0, 0, 0));
         player.setSide(Sides.Bottom, bottomBox.getSide(Sides.Top));
-        this.addPhysBox(player);
         this.player = player;
     }
 
@@ -636,18 +634,16 @@ class Game implements IDisposable {
         this.updateVisiblePhysBoxes();
     }
     private updateVisiblePhysBoxes() {
-        const visiblePhysBoxes = this.getPhysBoxesInRange(camera.getY() - 50, camera.getY() + 50);
+        // TODO: Replace magic numbers 100 and 25 with calculated values based on the cameras pitch
+        const visiblePhysBoxes = this.getPhysBoxesInRange(camera.getY() - 100, camera.getY() + 25);
         visiblePhysBoxes.forEach((physbox) => {
-            if (physbox.isObservable())
-                this.observedEntitiesThisUpdate.add(physbox);
+            if (physbox.isObservable()) this.observedEntitiesThisUpdate.add(physbox);
         });
         this.observedEntitiesLastUpdate.forEach((physBox) => {
-            if (!this.observedEntitiesThisUpdate.has(physBox))
-                physBox.endObservation();
+            if (!this.observedEntitiesThisUpdate.has(physBox)) physBox.endObservation();
         });
         this.observedEntitiesThisUpdate.forEach((physBox) => {
-            if (!this.observedEntitiesLastUpdate.has(physBox))
-                physBox.startObservation();
+            if (!this.observedEntitiesLastUpdate.has(physBox)) physBox.startObservation();
         });
         const tmp = this.observedEntitiesLastUpdate;
         this.observedEntitiesLastUpdate = this.observedEntitiesThisUpdate;
@@ -765,6 +761,9 @@ class CollisionGroups {
 }
 
 abstract class PhysBox implements IDisposable {
+    public constructor() {
+        game.addPhysBox(this);
+    }
     // destructor
     public dispose() { this.endObservation(); this.onDispose.fire(); this.disposed = true; }
     public isDisposed() : boolean { return this.disposed; }
@@ -1027,8 +1026,7 @@ enum LevelState {
 }
 abstract class Level {
     protected abstract getApproxTowerHeight(): number;
-    protected abstract generateFallBox(): FallBox;
-    protected abstract afterFallBoxPositioning(fallBox: FallBox);
+    protected abstract generateFallBox(lastY: number): FallBox;
     protected getHighestBox(): FallBox { return this.myboxes.length != 0 ? this.myboxes[this.myboxes.length - 1] : null; }
     protected abstract getBoxYIncrement(): number;
     public update(deltaT: number) {
@@ -1042,7 +1040,7 @@ abstract class Level {
         const topBoxY = this.getHighestBox() ? this.getHighestBox().getPos().y : Level.INITIAL_SPAWN_YOFFSET;
         const playerDistanceFromTopOfTower = (topBoxY - game.getPlayer().getPos().y);
         if (playerDistanceFromTopOfTower < Level.POPULATE_FALLBOXES_PLAYER_DISTANCE_THRESHOLD) {
-            const fallBox = this.generateFallBox();
+            const fallBox = this.generateFallBox(topBoxY);
             fallBox.onFreezeStateChange.addListener((frozen: boolean) => {
                 if (frozen) {
                     if ((this.levelState == LevelState.GeneratingTower) && (fallBox.getSide(Sides.Top) >= this.getApproxTowerHeight()))
@@ -1050,12 +1048,7 @@ abstract class Level {
                     console.log(fallBox.getSide(Sides.Top));
                 }
             });
-            game.addPhysBox(fallBox);
             this.myboxes.push(fallBox);
-            do {
-                fallBox.setPos(new BABYLON.Vector3(-Level.XZSpread + Math.random() * (Level.XZSpread*2), topBoxY + Level.SAFETY_BOX_Y_INCREMENT + this.getBoxYIncrement(), -Level.XZSpread + Math.random() * (Level.XZSpread*2)));
-            } while (game.getCollisions(fallBox).length != 0)
-            this.afterFallBoxPositioning(fallBox);
         }
     }
     public updateStateFinishedTower() {
@@ -1069,10 +1062,8 @@ abstract class Level {
             case LevelState.FinishedTower:
                 const boxingRingBottom = new BoxingRingBottom();
                 boxingRingBottom.setSide(Sides.Bottom, this.getHighestBox().getSide(Sides.Top) + 2);
-                game.addPhysBox(boxingRingBottom);
                 const boxingRingTop = new BoxingRingTop();
                 boxingRingTop.setSide(Sides.Bottom, boxingRingBottom.getSide(Sides.Top) + 2);
-                game.addPhysBox(boxingRingTop);
                 break;
             default:
                 break;
@@ -1083,8 +1074,7 @@ abstract class Level {
     private myboxes : Array<FallBox> = [];
     private static POPULATE_FALLBOXES_PLAYER_DISTANCE_THRESHOLD: number = 60;
     private static INITIAL_SPAWN_YOFFSET: number = 10;
-    private static SAFETY_BOX_Y_INCREMENT: number = 2;
-    protected static XZSpread: number = 7;
+    public static XZSpread: number = 7;
 }
 class StartLevel extends Level {
     public constructor() {
@@ -1092,31 +1082,8 @@ class StartLevel extends Level {
     }
     protected getBoxYIncrement(): number { return Math.random() * 3; }
     protected getApproxTowerHeight(): number { return 300; }
-    protected afterFallBoxPositioning(fallBox: FallBox) {
-        if (fallBox.getCollisionBuffer(Sides.Top) == 1) {
-            fallBox.setCollisionBuffer(Sides.Top, 0);
-            const coin = new Coin();
-            coin.setPos(fallBox.getPos());
-            coin.setSide(Sides.Bottom, fallBox.getSide(Sides.Top));
-            coin.setGravity(9);
-            game.addPhysBox(coin);
-        }
-        fallBox.clearCollisionBuffer();
-    }
-    protected generateFallBox() : FallBox {
-        const fallbox = new FallBoxBasic();
-        const rnd = Math.random();
-        if (rnd <= 0.33) {
-            fallbox.setScale(2);
-        } else if (rnd <= 0.66) {
-            fallbox.setScale(3);
-        } else {
-            fallbox.setScale(5);
-        }
-        if (rnd <= 0.3) {
-            fallbox.setCollisionBuffer(Sides.Top, 1);
-        }
-        fallbox.setVelocity(new BABYLON.Vector3(0, -0.1, 0));
+    protected generateFallBox(lastY: number) : FallBox {
+        const fallbox = new FallBoxBasic(lastY + PhysBox.MAXIMUM_HEIGHT + this.getBoxYIncrement());
         return fallbox;
     }
 }
@@ -1207,11 +1174,17 @@ class Coin extends PhysBox {
 }
 
 abstract class FallBox extends PhysBox {
-    public constructor() {
+    public constructor(yValue: number) {
         super();
         this.setMoverLevel(2);
         this.setCollisionGroup(CollisionGroups.Level);
-        this.color = new BABYLON.Color4(0.5 + Math.random() * 0.5, 0.5 + Math.random() * 0.5, 0.5 + Math.random() * 0.5, 1);
+        this.getPos().y = yValue;
+    }
+    public moveXZOutOfCollisions() {
+        const yValue: number = this.getPos().y;
+        do {
+            this.setPos(new BABYLON.Vector3(-Level.XZSpread + Math.random() * (Level.XZSpread*2), yValue, -Level.XZSpread + Math.random() * (Level.XZSpread*2)));
+        } while (game.getCollisions(this).length != 0)
     }
     public break() {
         this.unfreezeBoxesAbove();
@@ -1241,12 +1214,56 @@ class FallBoxBasic extends FallBox {
         mesh.material = material;
         this.MESH_POOL = await MeshPool.FromExisting(300, MeshPool.POOLTYPE_INSTANCE, mesh, 0);
     }
-    public constructor() {
-        super();
-        this.setMoverLevel(2);
+    public constructor(yValue: number) {
+        super(yValue);
+        const rnd = Math.random();
+        if (rnd <= 0.33) {
+            this.setScale(2);
+        } else if (rnd <= 0.66) {
+            this.setScale(3);
+        } else {
+            this.setScale(5);
+        }
+        if (rnd <= 0.3) {
+            this.setCollisionBuffer(Sides.Top, 1);
+        }
+        this.setVelocity(new BABYLON.Vector3(0, -0.1, 0));
+        this.moveXZOutOfCollisions();
+        if (this.getCollisionBuffer(Sides.Top) == 1) {
+            this.setCollisionBuffer(Sides.Top, 0);
+            const coin = new Coin();
+            coin.setPos(this.getPos());
+            coin.setSide(Sides.Bottom, this.getSide(Sides.Top));
+            coin.setGravity(9);
+        }
+        this.clearCollisionBuffer();
     }
     public getMeshPool() : MeshPool {
         return FallBoxBasic.MESH_POOL;
+    }
+    private static MESH_POOL: MeshPool;
+}
+
+class GoombaEnemy extends PhysBox {
+    public getMeshPool() : MeshPool { return GoombaEnemy.MESH_POOL; }
+    public static async LoadResources() {
+        const mesh = BABYLON.MeshBuilder.CreateBox('', { size: 0.4 }, scene);
+        const material = new BABYLON.StandardMaterial('', scene);
+        material.diffuseColor = new BABYLON.Color3(1, 0, 0);
+        mesh.material = material;
+        GoombaEnemy.MESH_POOL = await MeshPool.FromExisting(30, MeshPool.POOLTYPE_INSTANCE, mesh, 0);
+    }
+    public constructor() {
+        super();
+        this.setCollisionGroup(CollisionGroups.Enemy);
+        this.setGravity(7);
+    }
+    public beforeCollisions(deltaT: number) {
+        super.beforeCollisions(deltaT);
+        this.determineVelocities();
+    }
+    public determineVelocities() {
+        //this.getCollisions(Sides.Bottom).size == 
     }
     private static MESH_POOL: MeshPool;
 }

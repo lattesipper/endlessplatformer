@@ -593,12 +593,10 @@ window.addEventListener('DOMContentLoaded', () => {
             bottomBox
                 .freeze()
                 .setPos(new BABYLON.Vector3(0, 0, 0));
-            this.addPhysBox(bottomBox);
             // create the player
             const player = new Player();
             player.setPos(new BABYLON.Vector3(0, 0, 0));
             player.setSide(Sides.Bottom, bottomBox.getSide(Sides.Top));
-            this.addPhysBox(player);
             this.player = player;
         }
         getLavaLevel() { return this.lava.position.y - 1; }
@@ -642,7 +640,8 @@ window.addEventListener('DOMContentLoaded', () => {
             this.updateVisiblePhysBoxes();
         }
         updateVisiblePhysBoxes() {
-            const visiblePhysBoxes = this.getPhysBoxesInRange(camera.getY() - 50, camera.getY() + 50);
+            // TODO: Replace magic numbers 100 and 25 with calculated values based on the cameras pitch
+            const visiblePhysBoxes = this.getPhysBoxesInRange(camera.getY() - 100, camera.getY() + 25);
             visiblePhysBoxes.forEach((physbox) => {
                 if (physbox.isObservable())
                     this.observedEntitiesThisUpdate.add(physbox);
@@ -771,6 +770,7 @@ window.addEventListener('DOMContentLoaded', () => {
             this.size = BABYLON.Vector3.One();
             this.scaling = 1;
             this.instance = null;
+            game.addPhysBox(this);
         }
         // destructor
         dispose() { this.endObservation(); this.onDispose.fire(); this.disposed = true; }
@@ -1009,7 +1009,7 @@ window.addEventListener('DOMContentLoaded', () => {
             const topBoxY = this.getHighestBox() ? this.getHighestBox().getPos().y : Level.INITIAL_SPAWN_YOFFSET;
             const playerDistanceFromTopOfTower = (topBoxY - game.getPlayer().getPos().y);
             if (playerDistanceFromTopOfTower < Level.POPULATE_FALLBOXES_PLAYER_DISTANCE_THRESHOLD) {
-                const fallBox = this.generateFallBox();
+                const fallBox = this.generateFallBox(topBoxY);
                 fallBox.onFreezeStateChange.addListener((frozen) => {
                     if (frozen) {
                         if ((this.levelState == LevelState.GeneratingTower) && (fallBox.getSide(Sides.Top) >= this.getApproxTowerHeight()))
@@ -1017,12 +1017,7 @@ window.addEventListener('DOMContentLoaded', () => {
                         console.log(fallBox.getSide(Sides.Top));
                     }
                 });
-                game.addPhysBox(fallBox);
                 this.myboxes.push(fallBox);
-                do {
-                    fallBox.setPos(new BABYLON.Vector3(-Level.XZSpread + Math.random() * (Level.XZSpread * 2), topBoxY + Level.SAFETY_BOX_Y_INCREMENT + this.getBoxYIncrement(), -Level.XZSpread + Math.random() * (Level.XZSpread * 2)));
-                } while (game.getCollisions(fallBox).length != 0);
-                this.afterFallBoxPositioning(fallBox);
             }
         }
         updateStateFinishedTower() {
@@ -1034,10 +1029,8 @@ window.addEventListener('DOMContentLoaded', () => {
                 case LevelState.FinishedTower:
                     const boxingRingBottom = new BoxingRingBottom();
                     boxingRingBottom.setSide(Sides.Bottom, this.getHighestBox().getSide(Sides.Top) + 2);
-                    game.addPhysBox(boxingRingBottom);
                     const boxingRingTop = new BoxingRingTop();
                     boxingRingTop.setSide(Sides.Bottom, boxingRingBottom.getSide(Sides.Top) + 2);
-                    game.addPhysBox(boxingRingTop);
                     break;
                 default:
                     break;
@@ -1047,7 +1040,6 @@ window.addEventListener('DOMContentLoaded', () => {
     }
     Level.POPULATE_FALLBOXES_PLAYER_DISTANCE_THRESHOLD = 60;
     Level.INITIAL_SPAWN_YOFFSET = 10;
-    Level.SAFETY_BOX_Y_INCREMENT = 2;
     Level.XZSpread = 7;
     class StartLevel extends Level {
         constructor() {
@@ -1055,33 +1047,8 @@ window.addEventListener('DOMContentLoaded', () => {
         }
         getBoxYIncrement() { return Math.random() * 3; }
         getApproxTowerHeight() { return 300; }
-        afterFallBoxPositioning(fallBox) {
-            if (fallBox.getCollisionBuffer(Sides.Top) == 1) {
-                fallBox.setCollisionBuffer(Sides.Top, 0);
-                const coin = new Coin();
-                coin.setPos(fallBox.getPos());
-                coin.setSide(Sides.Bottom, fallBox.getSide(Sides.Top));
-                coin.setGravity(9);
-                game.addPhysBox(coin);
-            }
-            fallBox.clearCollisionBuffer();
-        }
-        generateFallBox() {
-            const fallbox = new FallBoxBasic();
-            const rnd = Math.random();
-            if (rnd <= 0.33) {
-                fallbox.setScale(2);
-            }
-            else if (rnd <= 0.66) {
-                fallbox.setScale(3);
-            }
-            else {
-                fallbox.setScale(5);
-            }
-            if (rnd <= 0.3) {
-                fallbox.setCollisionBuffer(Sides.Top, 1);
-            }
-            fallbox.setVelocity(new BABYLON.Vector3(0, -0.1, 0));
+        generateFallBox(lastY) {
+            const fallbox = new FallBoxBasic(lastY + PhysBox.MAXIMUM_HEIGHT + this.getBoxYIncrement());
             return fallbox;
         }
     }
@@ -1171,11 +1138,17 @@ window.addEventListener('DOMContentLoaded', () => {
     }
     Coin.REVS_PER_SECOND = 0.5;
     class FallBox extends PhysBox {
-        constructor() {
+        constructor(yValue) {
             super();
             this.setMoverLevel(2);
             this.setCollisionGroup(CollisionGroups.Level);
-            this.color = new BABYLON.Color4(0.5 + Math.random() * 0.5, 0.5 + Math.random() * 0.5, 0.5 + Math.random() * 0.5, 1);
+            this.getPos().y = yValue;
+        }
+        moveXZOutOfCollisions() {
+            const yValue = this.getPos().y;
+            do {
+                this.setPos(new BABYLON.Vector3(-Level.XZSpread + Math.random() * (Level.XZSpread * 2), yValue, -Level.XZSpread + Math.random() * (Level.XZSpread * 2)));
+            } while (game.getCollisions(this).length != 0);
         }
         break() {
             this.unfreezeBoxesAbove();
@@ -1197,9 +1170,31 @@ window.addEventListener('DOMContentLoaded', () => {
         getColor() { return this.color; }
     }
     class FallBoxBasic extends FallBox {
-        constructor() {
-            super();
-            this.setMoverLevel(2);
+        constructor(yValue) {
+            super(yValue);
+            const rnd = Math.random();
+            if (rnd <= 0.33) {
+                this.setScale(2);
+            }
+            else if (rnd <= 0.66) {
+                this.setScale(3);
+            }
+            else {
+                this.setScale(5);
+            }
+            if (rnd <= 0.3) {
+                this.setCollisionBuffer(Sides.Top, 1);
+            }
+            this.setVelocity(new BABYLON.Vector3(0, -0.1, 0));
+            this.moveXZOutOfCollisions();
+            if (this.getCollisionBuffer(Sides.Top) == 1) {
+                this.setCollisionBuffer(Sides.Top, 0);
+                const coin = new Coin();
+                coin.setPos(this.getPos());
+                coin.setSide(Sides.Bottom, this.getSide(Sides.Top));
+                coin.setGravity(9);
+            }
+            this.clearCollisionBuffer();
         }
         static LoadResources() {
             return __awaiter(this, void 0, void 0, function* () {
@@ -1211,6 +1206,30 @@ window.addEventListener('DOMContentLoaded', () => {
         }
         getMeshPool() {
             return FallBoxBasic.MESH_POOL;
+        }
+    }
+    class GoombaEnemy extends PhysBox {
+        constructor() {
+            super();
+            this.setCollisionGroup(CollisionGroups.Enemy);
+            this.setGravity(7);
+        }
+        getMeshPool() { return GoombaEnemy.MESH_POOL; }
+        static LoadResources() {
+            return __awaiter(this, void 0, void 0, function* () {
+                const mesh = BABYLON.MeshBuilder.CreateBox('', { size: 0.4 }, scene);
+                const material = new BABYLON.StandardMaterial('', scene);
+                material.diffuseColor = new BABYLON.Color3(1, 0, 0);
+                mesh.material = material;
+                GoombaEnemy.MESH_POOL = yield MeshPool.FromExisting(30, MeshPool.POOLTYPE_INSTANCE, mesh, 0);
+            });
+        }
+        beforeCollisions(deltaT) {
+            super.beforeCollisions(deltaT);
+            this.determineVelocities();
+        }
+        determineVelocities() {
+            //this.getCollisions(Sides.Bottom).size == 
         }
     }
     class Player extends PhysBox {
