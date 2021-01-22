@@ -1169,26 +1169,54 @@ window.addEventListener('DOMContentLoaded', () => {
         }
         getColor() { return this.color; }
     }
+    class DependantRandomGenerator {
+        constructor(counts) {
+            this.globalCountLeft = 0;
+            this.initialArrayCounts = counts;
+            this.currentArrayCounts = new Map(this.initialArrayCounts);
+        }
+        getValue() {
+            if (this.globalCountLeft == 0) {
+                this.initialArrayCounts.forEach((count, type) => {
+                    this.currentArrayCounts.set(type, count);
+                    this.globalCountLeft += count;
+                });
+            }
+            const rnd = Math.random();
+            let rollingProbability = 0;
+            for (const [type, countLeft] of this.currentArrayCounts.entries()) {
+                const probability = countLeft / this.globalCountLeft;
+                rollingProbability += probability;
+                if (rnd <= rollingProbability) {
+                    this.currentArrayCounts.set(type, countLeft - 1);
+                    this.globalCountLeft--;
+                    return type;
+                }
+            }
+            console.assert(false);
+        }
+    }
     class FallBoxBasic extends FallBox {
         constructor(yValue) {
             super(yValue);
-            const rnd = Math.random();
-            if (rnd <= 0.33) {
-                this.setScale(2);
+            this.boxSizeGenerator = new DependantRandomGenerator(new Map([
+                [FallBoxBasic.BOX_SIZE_SMALL, 2], [FallBoxBasic.BOX_SIZE_MEDIUM, 4], [FallBoxBasic.BOX_SIZE_LARGE, 4],
+            ]));
+            this.coinStatusGenerator = new DependantRandomGenerator(new Map([
+                [1, 1], [0, 4]
+            ]));
+            const boxSize = this.boxSizeGenerator.getValue();
+            this.setScale(boxSize);
+            let coinsToPlace = 0;
+            if (boxSize == FallBoxBasic.BOX_SIZE_LARGE) {
+                coinsToPlace = this.coinStatusGenerator.getValue();
             }
-            else if (rnd <= 0.66) {
-                this.setScale(3);
-            }
-            else {
-                this.setScale(5);
-            }
-            if (rnd <= 0.3) {
+            if (coinsToPlace == 1) {
                 this.setCollisionBuffer(Sides.Top, 1);
             }
             this.setVelocity(new BABYLON.Vector3(0, -0.1, 0));
             this.moveXZOutOfCollisions();
-            if (this.getCollisionBuffer(Sides.Top) == 1) {
-                this.setCollisionBuffer(Sides.Top, 0);
+            if (coinsToPlace == 1) {
                 const coin = new Coin();
                 coin.setPos(this.getPos());
                 coin.setSide(Sides.Bottom, this.getSide(Sides.Top));
@@ -1208,6 +1236,9 @@ window.addEventListener('DOMContentLoaded', () => {
             return FallBoxBasic.MESH_POOL;
         }
     }
+    FallBoxBasic.BOX_SIZE_SMALL = 2;
+    FallBoxBasic.BOX_SIZE_MEDIUM = 3;
+    FallBoxBasic.BOX_SIZE_LARGE = 5;
     class GoombaEnemy extends PhysBox {
         constructor() {
             super();

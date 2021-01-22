@@ -1207,6 +1207,36 @@ abstract class FallBox extends PhysBox {
     private color: BABYLON.Color4;
 }
 
+class DependantRandomGenerator<T> {
+    public constructor(counts: Map<T, number>) {
+        this.initialArrayCounts = counts;
+        this.currentArrayCounts = new Map(this.initialArrayCounts);
+    }
+    public getValue() : T { 
+        if (this.globalCountLeft == 0) {
+            this.initialArrayCounts.forEach((count, type) => {
+                this.currentArrayCounts.set(type, count);
+                this.globalCountLeft += count;
+            });
+        }
+        const rnd: number = Math.random();
+        let rollingProbability: number = 0;
+        for (const [type, countLeft] of this.currentArrayCounts.entries()) {
+            const probability = countLeft / this.globalCountLeft;
+            rollingProbability += probability;
+            if (rnd <= rollingProbability) {
+                this.currentArrayCounts.set(type, countLeft-1);
+                this.globalCountLeft--;
+                return type;
+            }
+        }
+        console.assert(false);
+     }
+    private globalCountLeft: number = 0;
+    private initialArrayCounts: Map<T, number>;
+    private currentArrayCounts: Map<T, number>;
+}
+
 class FallBoxBasic extends FallBox {
     public static async LoadResources() {
         const mesh = BABYLON.MeshBuilder.CreateBox('', { size: 1 }, scene);
@@ -1216,21 +1246,21 @@ class FallBoxBasic extends FallBox {
     }
     public constructor(yValue: number) {
         super(yValue);
-        const rnd = Math.random();
-        if (rnd <= 0.33) {
-            this.setScale(2);
-        } else if (rnd <= 0.66) {
-            this.setScale(3);
-        } else {
-            this.setScale(5);
+        const boxSize: number = this.boxSizeGenerator.getValue();
+        
+        this.setScale(boxSize);
+        let coinsToPlace: number = 0;
+        if (boxSize == FallBoxBasic.BOX_SIZE_LARGE) {
+            coinsToPlace = this.coinStatusGenerator.getValue();
         }
-        if (rnd <= 0.3) {
+        if (coinsToPlace == 1) {
             this.setCollisionBuffer(Sides.Top, 1);
         }
+        
         this.setVelocity(new BABYLON.Vector3(0, -0.1, 0));
         this.moveXZOutOfCollisions();
-        if (this.getCollisionBuffer(Sides.Top) == 1) {
-            this.setCollisionBuffer(Sides.Top, 0);
+
+        if (coinsToPlace == 1) {
             const coin = new Coin();
             coin.setPos(this.getPos());
             coin.setSide(Sides.Bottom, this.getSide(Sides.Top));
@@ -1241,6 +1271,16 @@ class FallBoxBasic extends FallBox {
     public getMeshPool() : MeshPool {
         return FallBoxBasic.MESH_POOL;
     }
+    private boxSizeGenerator: DependantRandomGenerator<number> = new DependantRandomGenerator(new Map([
+        [FallBoxBasic.BOX_SIZE_SMALL, 2], [FallBoxBasic.BOX_SIZE_MEDIUM, 4], [FallBoxBasic.BOX_SIZE_LARGE, 4],
+    ]));
+    private coinStatusGenerator: DependantRandomGenerator<number> = new DependantRandomGenerator(new Map([
+        [1, 1], [0, 4]
+    ]));
+
+    private static BOX_SIZE_SMALL: number = 2;
+    private static BOX_SIZE_MEDIUM: number = 3;
+    private static BOX_SIZE_LARGE: number = 5;
     private static MESH_POOL: MeshPool;
 }
 
