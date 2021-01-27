@@ -199,64 +199,69 @@ window.addEventListener('DOMContentLoaded', () => {
         isRunning() { return this.running; }
         isPaused() { return this.paused; }
     }
-    class MeshPool {
-        constructor(instanceCount, poolType) {
-            this.instances = [];
-            this.instances = new Array(instanceCount);
-            this.poolType = poolType;
+    class ResourcePool {
+        constructor(template, instanceCount) {
+            this.resources = [];
+            this.resources = new Array(instanceCount);
+            for (let i = 0; i < this.resources.length; i++)
+                this.resources[i] = this.cloneResource(template);
+        }
+        getResource() {
+            console.assert(this.resources.length > 0);
+            const resource = this.resources.pop();
+            return resource;
+        }
+        returnResource(resource) {
+            this.resources.push(resource);
+        }
+    }
+    class MeshPool extends ResourcePool {
+        constructor(template, instanceCount) {
+            super(template, instanceCount);
         }
         static FromResources(instanceCount, poolType, meshName, sizeInBytes = 0) {
             return __awaiter(this, void 0, void 0, function* () {
-                const meshPool = new MeshPool(instanceCount, poolType);
                 const loadedMesh = yield ResourceLoader.getInstance().loadMesh(meshName, sizeInBytes);
-                loadedMesh.isVisible = false;
-                loadedMesh.receiveShadows = true;
-                meshPool.populatePool(loadedMesh);
-                return meshPool;
+                return MeshPool.FromExisting(instanceCount, poolType, loadedMesh);
             });
         }
-        static FromExisting(instanceCount, poolType, mesh, sizeInBytes = 0) {
-            return __awaiter(this, void 0, void 0, function* () {
-                const meshPool = new MeshPool(instanceCount, poolType);
-                mesh.isVisible = false;
-                mesh.receiveShadows = true;
-                meshPool.populatePool(mesh);
-                return meshPool;
-            });
-        }
-        populatePool(templateMesh) {
-            for (let i = 0; i < this.instances.length; i++) {
-                let instance;
-                switch (this.poolType) {
-                    case MeshPool.POOLTYPE_INSTANCE:
-                        instance = templateMesh.createInstance('');
-                        break;
-                    case MeshPool.POOLTYPE_CLONE:
-                        instance = templateMesh.clone('');
-                        break;
-                    default:
-                        console.assert(false);
-                        break;
-                }
-                instance.isVisible = false;
-                this.instances[i] = instance;
+        static FromExisting(instanceCount, poolType, mesh) {
+            mesh.isVisible = false;
+            mesh.receiveShadows = true;
+            switch (poolType) {
+                case MeshPool.POOLTYPE_CLONE: return new MeshPoolClones(mesh, instanceCount);
+                case MeshPool.POOLTYPE_INSTANCE: return new MeshPoolInstances(mesh, instanceCount);
             }
         }
-        getMesh() {
-            console.assert(this.instances.length > 0);
-            const instance = this.instances.pop();
-            instance.isVisible = true;
-            return instance;
+        getResource() {
+            const resource = super.getResource();
+            resource.isVisible = true;
+            return resource;
         }
-        returnMesh(instance) {
-            instance.isVisible = false;
-            instance.unfreezeWorldMatrix();
-            this.instances.push(instance);
+        returnResource(resource) {
+            super.returnResource(resource);
+            resource.isVisible = false;
+            resource.unfreezeWorldMatrix();
         }
     }
     MeshPool.POOLTYPE_INSTANCE = 0;
     MeshPool.POOLTYPE_CLONE = 0;
-    MeshPool.POOLTYPE_SPS = 0;
+    class MeshPoolInstances extends MeshPool {
+        cloneResource(template) {
+            let instance;
+            instance = template.createInstance('');
+            instance.isVisible = false;
+            return instance;
+        }
+    }
+    class MeshPoolClones extends MeshPool {
+        cloneResource(template) {
+            let instance;
+            instance = template.clone('');
+            instance.isVisible = false;
+            return instance;
+        }
+    }
     // Singleton input manager
     class InputManager {
         constructor() {
@@ -489,18 +494,25 @@ window.addEventListener('DOMContentLoaded', () => {
             });
         }
         update(deltaT) {
-            const lavaSpeed = ((this.context.getPlayer().getPos().y - this.context.getLava().position.y) < GameStandard.PLAYER_DISTANCE_FOR_FAST_LAVA) ?
-                GameStandard.LAVA_SPEED_STANDARD :
-                GameStandard.LAVA_SPEED_FAST;
+            const towerTopDistanceFromLava = (this.currentLevel.getCurrentTowerHeight() - this.context.getLava().position.y);
+            let lavaSpeed = GameStandard.LAVA_SPEED_STANDARD;
+            if (towerTopDistanceFromLava < GameStandard.TOWERTOP_DISTANCE_FOR_SLOW_LAVA) {
+                lavaSpeed = GameStandard.LAVA_SPEED_SLOW;
+            }
+            else if (towerTopDistanceFromLava > GameStandard.TOWERTOP_DISTANCE_FOR_FAST_LAVA) {
+                lavaSpeed = GameStandard.LAVA_SPEED_FAST;
+            }
             this.context.getLava().position.y += lavaSpeed;
             this.currentLevel.update(deltaT);
             this.spectateDelayTimer.update(deltaT);
         }
     }
     GameStandard.DEATH_SPECTATE_DELAY = 3;
-    GameStandard.PLAYER_DISTANCE_FOR_FAST_LAVA = 60;
-    GameStandard.LAVA_SPEED_STANDARD = 0.0275;
-    GameStandard.LAVA_SPEED_FAST = 0.1;
+    GameStandard.TOWERTOP_DISTANCE_FOR_FAST_LAVA = 50;
+    GameStandard.TOWERTOP_DISTANCE_FOR_SLOW_LAVA = 10;
+    GameStandard.LAVA_SPEED_STANDARD = 0.025;
+    GameStandard.LAVA_SPEED_FAST = 0.05;
+    GameStandard.LAVA_SPEED_SLOW = 0.015;
     class GameOver extends GameState {
         constructor(context) {
             super(context);
@@ -842,7 +854,7 @@ window.addEventListener('DOMContentLoaded', () => {
         startObservation() {
             if (this.instance)
                 return;
-            this.instance = this.getMeshPool().getMesh();
+            this.instance = this.getMeshPool().getResource();
             this.instance.scaling = BABYLON.Vector3.One().scale(this.scaling);
             this.instance.position = this.getPos();
             if (this.frozen)
@@ -853,7 +865,7 @@ window.addEventListener('DOMContentLoaded', () => {
             if (!this.instance)
                 return;
             this.beforeEndObservation();
-            this.getMeshPool().returnMesh(this.instance);
+            this.getMeshPool().returnResource(this.instance);
             this.instance = null;
         }
         afterStartObservation() { }
@@ -990,6 +1002,7 @@ window.addEventListener('DOMContentLoaded', () => {
         constructor() {
             this.levelState = LevelState.GeneratingTower;
             this.myboxes = [];
+            this.currentTowerHeight = 0;
         }
         getHighestBox() { return this.myboxes.length != 0 ? this.myboxes[this.myboxes.length - 1] : null; }
         update(deltaT) {
@@ -1005,6 +1018,7 @@ window.addEventListener('DOMContentLoaded', () => {
                     break;
             }
         }
+        getCurrentTowerHeight() { return this.currentTowerHeight; }
         updateStateGeneratingTower() {
             const topBoxY = this.getHighestBox() ? this.getHighestBox().getPos().y : Level.INITIAL_SPAWN_YOFFSET;
             const playerDistanceFromTopOfTower = (topBoxY - game.getPlayer().getPos().y);
@@ -1012,9 +1026,9 @@ window.addEventListener('DOMContentLoaded', () => {
                 const fallBox = this.generateFallBox(topBoxY);
                 fallBox.onFreezeStateChange.addListener((frozen) => {
                     if (frozen) {
+                        this.currentTowerHeight = Math.max(this.currentTowerHeight, fallBox.getSide(Sides.Top));
                         if ((this.levelState == LevelState.GeneratingTower) && (fallBox.getSide(Sides.Top) >= this.getApproxTowerHeight()))
                             this.setState(LevelState.FinishedTower);
-                        console.log(fallBox.getSide(Sides.Top));
                     }
                 });
                 this.myboxes.push(fallBox);
@@ -1066,7 +1080,7 @@ window.addEventListener('DOMContentLoaded', () => {
                 material.diffuseTexture = yield ResourceLoader.getInstance().loadTexture("floorBox.png", 7415);
                 material.freeze();
                 mesh.material = material;
-                this.MESH_POOL = yield MeshPool.FromExisting(1, MeshPool.POOLTYPE_INSTANCE, mesh, 0);
+                this.MESH_POOL = MeshPool.FromExisting(1, MeshPool.POOLTYPE_INSTANCE, mesh);
             });
         }
         getMeshPool() { return FloorBox.MESH_POOL; }
@@ -1229,7 +1243,7 @@ window.addEventListener('DOMContentLoaded', () => {
                 const mesh = BABYLON.MeshBuilder.CreateBox('', { size: 1 }, scene);
                 const material = new BABYLON.StandardMaterial('', scene);
                 mesh.material = material;
-                this.MESH_POOL = yield MeshPool.FromExisting(300, MeshPool.POOLTYPE_INSTANCE, mesh, 0);
+                this.MESH_POOL = MeshPool.FromExisting(300, MeshPool.POOLTYPE_INSTANCE, mesh);
             });
         }
         getMeshPool() {
@@ -1252,7 +1266,7 @@ window.addEventListener('DOMContentLoaded', () => {
                 const material = new BABYLON.StandardMaterial('', scene);
                 material.diffuseColor = new BABYLON.Color3(1, 0, 0);
                 mesh.material = material;
-                GoombaEnemy.MESH_POOL = yield MeshPool.FromExisting(30, MeshPool.POOLTYPE_INSTANCE, mesh, 0);
+                GoombaEnemy.MESH_POOL = MeshPool.FromExisting(30, MeshPool.POOLTYPE_INSTANCE, mesh);
             });
         }
         beforeCollisions(deltaT) {

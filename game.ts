@@ -192,60 +192,68 @@ class GameTimer {
     private executeCallback: CallableFunction;
 }
 
-class MeshPool {
-    private constructor(instanceCount: number, poolType: number) {
-        this.instances = new Array(instanceCount);
-        this.poolType = poolType;
+abstract class ResourcePool<T> {
+    protected constructor(template: T, instanceCount: number) {
+        this.resources = new Array(instanceCount);
+        for (let i = 0; i < this.resources.length; i++)
+            this.resources[i] = this.cloneResource(template);
+    }
+    public getResource() : T {
+        console.assert(this.resources.length > 0);
+        const resource = this.resources.pop();
+        return resource;
+    }
+    public returnResource(resource: T) {
+        this.resources.push(resource);
+    }
+    protected abstract cloneResource(template: T) : T;
+    private resources: Array<T> = [];
+}
+
+abstract class MeshPool extends ResourcePool<BABYLON.AbstractMesh> {
+    public constructor(template: BABYLON.AbstractMesh, instanceCount: number) {
+        super(template, instanceCount);
     }
     public static async FromResources(instanceCount: number, poolType: number, meshName: string, sizeInBytes: number = 0) : Promise<MeshPool> {
-        const meshPool = new MeshPool(instanceCount, poolType);
         const loadedMesh = await ResourceLoader.getInstance().loadMesh(meshName, sizeInBytes);
-        loadedMesh.isVisible = false;
-        loadedMesh.receiveShadows = true;
-        meshPool.populatePool(loadedMesh);
-        return meshPool;
+        return MeshPool.FromExisting(instanceCount, poolType, loadedMesh);
     }
-    public static async FromExisting(instanceCount: number, poolType: number, mesh: BABYLON.Mesh, sizeInBytes: number = 0) : Promise<MeshPool> {
-        const meshPool = new MeshPool(instanceCount, poolType);
+    public static FromExisting(instanceCount: number, poolType: number, mesh: BABYLON.Mesh) : MeshPool {
         mesh.isVisible = false;
         mesh.receiveShadows = true;
-        meshPool.populatePool(mesh);
-        return meshPool;
-    }
-    private populatePool(templateMesh: BABYLON.Mesh) {
-        for (let i = 0; i < this.instances.length; i++) {
-            let instance: BABYLON.AbstractMesh;
-            switch(this.poolType) {
-                case MeshPool.POOLTYPE_INSTANCE:
-                    instance = templateMesh.createInstance('');
-                    break;
-                case MeshPool.POOLTYPE_CLONE:
-                    instance = templateMesh.clone('');
-                    break;
-                default:
-                    console.assert(false);
-                    break;
-            }
-            instance.isVisible = false;
-            this.instances[i] = instance;
+        switch(poolType) {
+            case MeshPool.POOLTYPE_CLONE: return new MeshPoolClones(mesh, instanceCount);
+            case MeshPool.POOLTYPE_INSTANCE: return new MeshPoolInstances(mesh, instanceCount);
         }
     }
-    public getMesh() : BABYLON.AbstractMesh {
-        console.assert(this.instances.length > 0);
-        const instance = this.instances.pop();
-        instance.isVisible = true;
-        return instance;
+    public getResource() : BABYLON.AbstractMesh {
+        const resource = super.getResource();
+        resource.isVisible = true;
+        return resource;
     }
-    public returnMesh(instance : BABYLON.AbstractMesh) {
-        instance.isVisible = false;
-        instance.unfreezeWorldMatrix();
-        this.instances.push(instance);
+    public returnResource(resource : BABYLON.AbstractMesh) {
+        super.returnResource(resource);
+        resource.isVisible = false;
+        resource.unfreezeWorldMatrix();
     }
-    private instances: Array<BABYLON.AbstractMesh> = [];
-    private poolType: number;
     public static POOLTYPE_INSTANCE: number = 0;
     public static POOLTYPE_CLONE: number = 0;
-    public static POOLTYPE_SPS: number = 0;
+}
+class MeshPoolInstances extends MeshPool {
+    protected cloneResource(template: BABYLON.AbstractMesh) : BABYLON.AbstractMesh {
+        let instance: BABYLON.AbstractMesh;
+        instance =  (<BABYLON.Mesh>template).createInstance('');
+        instance.isVisible = false;
+        return instance;
+    }
+}
+class MeshPoolClones extends MeshPool {
+    protected cloneResource(template: BABYLON.AbstractMesh) : BABYLON.AbstractMesh {
+        let instance: BABYLON.AbstractMesh;
+        instance =  (<BABYLON.Mesh>template).clone('');
+        instance.isVisible = false;
+        return instance;
+    }
 }
 
 // Singleton input manager
@@ -475,9 +483,13 @@ class GameStandard extends GameState {
         }, this);
     }
     public update(deltaT: number) {
-        const lavaSpeed: number = ((this.context.getPlayer().getPos().y - this.context.getLava().position.y) < GameStandard.PLAYER_DISTANCE_FOR_FAST_LAVA) ?
-            GameStandard.LAVA_SPEED_STANDARD :
-            GameStandard.LAVA_SPEED_FAST;
+        const towerTopDistanceFromLava: number = (this.currentLevel.getCurrentTowerHeight() - this.context.getLava().position.y);
+        let lavaSpeed: number = GameStandard.LAVA_SPEED_STANDARD;
+        if (towerTopDistanceFromLava < GameStandard.TOWERTOP_DISTANCE_FOR_SLOW_LAVA) {
+            lavaSpeed = GameStandard.LAVA_SPEED_SLOW;
+        } else if (towerTopDistanceFromLava > GameStandard.TOWERTOP_DISTANCE_FOR_FAST_LAVA) {
+            lavaSpeed = GameStandard.LAVA_SPEED_FAST;
+        }
         this.context.getLava().position.y += lavaSpeed;
         this.currentLevel.update(deltaT);
         this.spectateDelayTimer.update(deltaT);
@@ -492,9 +504,11 @@ class GameStandard extends GameState {
     private static SOUND_PAUSE_OUT: BABYLON.Sound;
     
     private static DEATH_SPECTATE_DELAY: number = 3;
-    private static PLAYER_DISTANCE_FOR_FAST_LAVA: number = 60;
-    private static LAVA_SPEED_STANDARD: number = 0.0275;
-    private static LAVA_SPEED_FAST: number = 0.1;
+    private static TOWERTOP_DISTANCE_FOR_FAST_LAVA: number = 50;
+    private static TOWERTOP_DISTANCE_FOR_SLOW_LAVA: number = 10;
+    private static LAVA_SPEED_STANDARD: number = 0.025;
+    private static LAVA_SPEED_FAST: number = 0.05;
+    private static LAVA_SPEED_SLOW: number = 0.015;
 }
 class GameOver extends GameState {
     public static async LoadResouces(): Promise<any> {
@@ -842,7 +856,7 @@ abstract class PhysBox implements IDisposable {
     public startObservation() {
         if (this.instance)
             return;
-        this.instance = this.getMeshPool().getMesh();
+        this.instance = this.getMeshPool().getResource();
         this.instance.scaling = BABYLON.Vector3.One().scale(this.scaling);
         this.instance.position = this.getPos();
         if (this.frozen) this.instance.freezeWorldMatrix();
@@ -852,7 +866,7 @@ abstract class PhysBox implements IDisposable {
         if (!this.instance)
             return
         this.beforeEndObservation();
-        this.getMeshPool().returnMesh(this.instance);
+        this.getMeshPool().returnResource(this.instance);
         this.instance = null;
     }
     protected afterStartObservation() {}
@@ -1036,6 +1050,7 @@ abstract class Level {
             case LevelState.Boss: this.updateStateBoss(); break;
         }
     }
+    public getCurrentTowerHeight(): number { return this.currentTowerHeight; }
     public updateStateGeneratingTower() {
         const topBoxY = this.getHighestBox() ? this.getHighestBox().getPos().y : Level.INITIAL_SPAWN_YOFFSET;
         const playerDistanceFromTopOfTower = (topBoxY - game.getPlayer().getPos().y);
@@ -1043,9 +1058,9 @@ abstract class Level {
             const fallBox = this.generateFallBox(topBoxY);
             fallBox.onFreezeStateChange.addListener((frozen: boolean) => {
                 if (frozen) {
+                    this.currentTowerHeight = Math.max(this.currentTowerHeight, fallBox.getSide(Sides.Top));
                     if ((this.levelState == LevelState.GeneratingTower) && (fallBox.getSide(Sides.Top) >= this.getApproxTowerHeight()))
                         this.setState(LevelState.FinishedTower);
-                    console.log(fallBox.getSide(Sides.Top));
                 }
             });
             this.myboxes.push(fallBox);
@@ -1072,6 +1087,7 @@ abstract class Level {
     }
     private levelState: LevelState = LevelState.GeneratingTower;
     private myboxes : Array<FallBox> = [];
+    private currentTowerHeight: number = 0;
     private static POPULATE_FALLBOXES_PLAYER_DISTANCE_THRESHOLD: number = 60;
     private static INITIAL_SPAWN_YOFFSET: number = 10;
     public static XZSpread: number = 7;
@@ -1095,7 +1111,7 @@ class FloorBox extends PhysBox {
         material.diffuseTexture = await ResourceLoader.getInstance().loadTexture("floorBox.png", 7415);
         material.freeze();
         mesh.material = material;
-        this.MESH_POOL = await MeshPool.FromExisting(1, MeshPool.POOLTYPE_INSTANCE, mesh, 0);
+        this.MESH_POOL = MeshPool.FromExisting(1, MeshPool.POOLTYPE_INSTANCE, mesh);
     }
     public getMeshPool() : MeshPool { return FloorBox.MESH_POOL; }
     public constructor() {
@@ -1242,7 +1258,7 @@ class FallBoxBasic extends FallBox {
         const mesh = BABYLON.MeshBuilder.CreateBox('', { size: 1 }, scene);
         const material = new BABYLON.StandardMaterial('', scene);
         mesh.material = material;
-        this.MESH_POOL = await MeshPool.FromExisting(300, MeshPool.POOLTYPE_INSTANCE, mesh, 0);
+        this.MESH_POOL = MeshPool.FromExisting(300, MeshPool.POOLTYPE_INSTANCE, mesh);
     }
     public constructor(yValue: number) {
         super(yValue);
@@ -1291,7 +1307,7 @@ class GoombaEnemy extends PhysBox {
         const material = new BABYLON.StandardMaterial('', scene);
         material.diffuseColor = new BABYLON.Color3(1, 0, 0);
         mesh.material = material;
-        GoombaEnemy.MESH_POOL = await MeshPool.FromExisting(30, MeshPool.POOLTYPE_INSTANCE, mesh, 0);
+        GoombaEnemy.MESH_POOL = MeshPool.FromExisting(30, MeshPool.POOLTYPE_INSTANCE, mesh);
     }
     public constructor() {
         super();
