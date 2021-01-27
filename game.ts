@@ -193,7 +193,7 @@ class GameTimer {
 }
 
 abstract class ResourcePool<T> {
-    protected constructor(template: T, instanceCount: number) {
+    public constructor(template: T, instanceCount: number) {
         this.resources = new Array(instanceCount);
         for (let i = 0; i < this.resources.length; i++)
             this.resources[i] = this.cloneResource(template);
@@ -208,6 +208,12 @@ abstract class ResourcePool<T> {
     }
     protected abstract cloneResource(template: T) : T;
     private resources: Array<T> = [];
+}
+
+class ParticleSystemPool extends ResourcePool<BABYLON.ParticleSystem> {
+    public cloneResource(resource: BABYLON.ParticleSystem) : BABYLON.ParticleSystem {
+        return resource.clone('', BABYLON.Vector3.One());
+    }
 }
 
 abstract class MeshPool extends ResourcePool<BABYLON.AbstractMesh> {
@@ -1331,11 +1337,36 @@ class Player extends PhysBox {
         Player.SOUND_HIT_HEAD = await ResourceLoader.getInstance().loadSound("hitHead.wav", 8418);
         Player.SOUND_DEATH = await ResourceLoader.getInstance().loadSound("death.wav", 138110);
         Player.MESH_POOL = await MeshPool.FromResources(2, MeshPool.POOLTYPE_CLONE, 'player.obj', 7654);
+        Player.PARTICLE_POOL = new ParticleSystemPool((() => {
+            const particleSystem = new BABYLON.ParticleSystem("particles", 2000, scene);
+            particleSystem.particleTexture = new BABYLON.Texture("https://raw.githubusercontent.com/lattesipper/endlessplatformer/master/resources/images/flare.png", scene);
+            particleSystem.minEmitBox = new BABYLON.Vector3(0, 0, 0); // Starting all from
+            particleSystem.maxEmitBox = new BABYLON.Vector3(0, 0, 0); // To...
+            particleSystem.color1 = new BABYLON.Color4(1.0, 1.0, 1.0, 1.0);
+            particleSystem.color2 = new BABYLON.Color4(1.0, 1.0, 1.0, 1.0);
+            particleSystem.colorDead = new BABYLON.Color4(0, 0, 0, 0.0);
+            particleSystem.minSize = 0.1;
+            particleSystem.maxSize = 0.5;
+            particleSystem.minLifeTime = 0.4;
+            particleSystem.maxLifeTime = 0.6;
+            particleSystem.emitRate = 2000;
+            particleSystem.blendMode = BABYLON.ParticleSystem.BLENDMODE_ONEONE;
+            particleSystem.gravity = new BABYLON.Vector3(0, 0, 0);
+            particleSystem.direction1 = new BABYLON.Vector3(-1, -1, -1);
+            particleSystem.direction2 = new BABYLON.Vector3(1, 1, 1);
+            particleSystem.minAngularSpeed = 0;
+            particleSystem.maxAngularSpeed = Math.PI;
+            particleSystem.minEmitPower = 6;
+            particleSystem.maxEmitPower = 10;
+            particleSystem.updateSpeed = 0.005;
+            return particleSystem;
+        })(), 3);
     }
     public getMeshPool() : MeshPool { return Player.MESH_POOL; }
     public dispose() {
         super.dispose();
-        this.explosionParticleSystem.dispose();
+        if (this.explosionParticleSystem)
+            Player.PARTICLE_POOL.returnResource(this.explosionParticleSystem);
     }
     public afterStartObservation() {
         this.explosionParticleSystem.emitter = this.getMeshInstance();
@@ -1349,30 +1380,6 @@ class Player extends PhysBox {
         super();
         this.setCollisionGroup(CollisionGroups.Player);
         this.setTerminalVelocity(Player.MAX_Y_SPEED);
-
-        const particleSystem = new BABYLON.ParticleSystem("particles", 2000, scene);
-        //particleSystem.particleTexture = new BABYLON.Texture("https://raw.githubusercontent.com/lattesipper/endlessplatformer/master/resources/images/flare.png", scene);
-        particleSystem.minEmitBox = new BABYLON.Vector3(0, 0, 0); // Starting all from
-        particleSystem.maxEmitBox = new BABYLON.Vector3(0, 0, 0); // To...
-        particleSystem.color1 = new BABYLON.Color4(1.0, 1.0, 1.0, 1.0);
-        particleSystem.color2 = new BABYLON.Color4(1.0, 1.0, 1.0, 1.0);
-        particleSystem.colorDead = new BABYLON.Color4(0, 0, 0, 0.0);
-        particleSystem.minSize = 0.1;
-        particleSystem.maxSize = 0.5;
-        particleSystem.minLifeTime = 0.4;
-        particleSystem.maxLifeTime = 0.6;
-        particleSystem.emitRate = 2000;
-        particleSystem.blendMode = BABYLON.ParticleSystem.BLENDMODE_ONEONE;
-        particleSystem.gravity = new BABYLON.Vector3(0, 0, 0);
-        particleSystem.direction1 = new BABYLON.Vector3(-1, -1, -1);
-        particleSystem.direction2 = new BABYLON.Vector3(1, 1, 1);
-        particleSystem.minAngularSpeed = 0;
-        particleSystem.maxAngularSpeed = Math.PI;
-        particleSystem.minEmitPower = 6;
-        particleSystem.maxEmitPower = 10;
-        particleSystem.updateSpeed = 0.005;
-        this.explosionParticleSystem = particleSystem;
-
         this.setNormalizedSize(new BABYLON.Vector3(0.6658418, 0.8655933, 0.6658418));
         this.setPos(new BABYLON.Vector3(0, 3, 0));
         this.setGravity(Player.GRAVITY);
@@ -1382,6 +1389,8 @@ class Player extends PhysBox {
     }
     public kill() {
         this.dispose();
+        this.explosionParticleSystem = Player.PARTICLE_POOL.getResource();
+        this.explosionParticleSystem.emitter = this.getPos();
         this.explosionParticleSystem.start();
         Player.SOUND_DEATH.play();
         this.onDeath.fire();
@@ -1561,7 +1570,6 @@ class Player extends PhysBox {
 
     public onDeath: NamedEvent<() => void> = new NamedEvent();
 
-    private mesh: BABYLON.AbstractMesh;
     private bestHeight: number = 0;
     private explosionParticleSystem: BABYLON.ParticleSystem;
     private health: number = 5;
@@ -1569,7 +1577,8 @@ class Player extends PhysBox {
     private gravityDelayTimer: GameTimer = new GameTimer();     private static GRAVITY_DELAY_TIME_IN_SECONDS: number = 0.2;
     private invulnerabilityTimer: GameTimer = new GameTimer();  private static INVULNERABILITY_DELAY_TIME_IN_SECONDS: number = 2;
 
-    private static MESH_POOL : MeshPool;
+    private static MESH_POOL: MeshPool;
+    private static PARTICLE_POOL: ParticleSystemPool; 
 }
 
 abstract class GUIState {
