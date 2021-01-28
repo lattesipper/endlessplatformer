@@ -212,7 +212,13 @@ abstract class ResourcePool<T> {
 
 class ParticleSystemPool extends ResourcePool<BABYLON.ParticleSystem> {
     public cloneResource(resource: BABYLON.ParticleSystem) : BABYLON.ParticleSystem {
-        return resource.clone('', BABYLON.Vector3.One());
+        const clone = resource.clone('', BABYLON.Vector3.One());
+        clone.stop(); // cloned particle systems auto-start for some reason
+        return clone;
+    }
+    public returnResource(resource: BABYLON.ParticleSystem) {
+        resource.stop();
+        super.returnResource(resource);
     }
 }
 
@@ -1339,7 +1345,7 @@ class Player extends PhysBox {
         Player.MESH_POOL = await MeshPool.FromResources(2, MeshPool.POOLTYPE_CLONE, 'player.obj', 7654);
         Player.PARTICLE_POOL = new ParticleSystemPool((() => {
             const particleSystem = new BABYLON.ParticleSystem("particles", 2000, scene);
-            particleSystem.particleTexture = new BABYLON.Texture("https://raw.githubusercontent.com/lattesipper/endlessplatformer/master/resources/images/flare.png", scene);
+            particleSystem.particleTexture = new BABYLON.Texture("https://www.babylonjs-playground.com/textures/flare.png", scene);
             particleSystem.minEmitBox = new BABYLON.Vector3(0, 0, 0); // Starting all from
             particleSystem.maxEmitBox = new BABYLON.Vector3(0, 0, 0); // To...
             particleSystem.color1 = new BABYLON.Color4(1.0, 1.0, 1.0, 1.0);
@@ -1358,7 +1364,9 @@ class Player extends PhysBox {
             particleSystem.maxAngularSpeed = Math.PI;
             particleSystem.minEmitPower = 6;
             particleSystem.maxEmitPower = 10;
-            particleSystem.updateSpeed = 0.005;
+            particleSystem.updateSpeed = 0.01;
+            particleSystem.targetStopDuration = 0.5;
+            particleSystem.stop();
             return particleSystem;
         })(), 3);
     }
@@ -1369,12 +1377,10 @@ class Player extends PhysBox {
             Player.PARTICLE_POOL.returnResource(this.explosionParticleSystem);
     }
     public afterStartObservation() {
-        this.explosionParticleSystem.emitter = this.getMeshInstance();
         shadowGenerator.addShadowCaster(this.getMeshInstance());
     }
     public beforeEndObservation() {
         shadowGenerator.removeShadowCaster(this.getMeshInstance());
-        this.explosionParticleSystem.emitter = null;
     }
     public constructor() {
         super();
@@ -1394,7 +1400,6 @@ class Player extends PhysBox {
         this.explosionParticleSystem.start();
         Player.SOUND_DEATH.play();
         this.onDeath.fire();
-        setTimeout(() => this.explosionParticleSystem.stop(), 150);
     }
 
     public damadge(damadger: PhysBox = null) : boolean {
@@ -1429,9 +1434,6 @@ class Player extends PhysBox {
                 this.setGravity(Player.GRAVITY);
             }, Player.GRAVITY_DELAY_TIME_IN_SECONDS, false);
         }
-        // if (physBox instanceof Boulder) {
-        //     this.damadge(physBox);
-        // }
     }
 
     private determineVelocities() {
