@@ -1301,6 +1301,9 @@ window.addEventListener('DOMContentLoaded', () => {
             this.setNormalizedSize(new BABYLON.Vector3(0.6658418, 0.8655933, 0.6658418));
             this.setPos(new BABYLON.Vector3(0, 3, 0));
             this.setGravity(Player.GRAVITY);
+            // setTimeout(() => {
+            //     this.kill();
+            // }, 3000);
         }
         static LoadResources() {
             return __awaiter(this, void 0, void 0, function* () {
@@ -1317,10 +1320,10 @@ window.addEventListener('DOMContentLoaded', () => {
                     particleSystem.color1 = new BABYLON.Color4(1.0, 1.0, 1.0, 1.0);
                     particleSystem.color2 = new BABYLON.Color4(1.0, 1.0, 1.0, 1.0);
                     particleSystem.colorDead = new BABYLON.Color4(0, 0, 0, 0.0);
-                    particleSystem.minSize = 0.1;
-                    particleSystem.maxSize = 0.5;
-                    particleSystem.minLifeTime = 0.4;
-                    particleSystem.maxLifeTime = 0.6;
+                    particleSystem.minSize = 0.25;
+                    particleSystem.maxSize = 0.75;
+                    particleSystem.minLifeTime = 2;
+                    particleSystem.maxLifeTime = 3;
                     particleSystem.emitRate = 2000;
                     particleSystem.blendMode = BABYLON.ParticleSystem.BLENDMODE_ONEONE;
                     particleSystem.gravity = new BABYLON.Vector3(0, 0, 0);
@@ -1328,10 +1331,9 @@ window.addEventListener('DOMContentLoaded', () => {
                     particleSystem.direction2 = new BABYLON.Vector3(1, 1, 1);
                     particleSystem.minAngularSpeed = 0;
                     particleSystem.maxAngularSpeed = Math.PI;
-                    particleSystem.minEmitPower = 6;
-                    particleSystem.maxEmitPower = 10;
+                    particleSystem.minEmitPower = 2;
+                    particleSystem.maxEmitPower = 4;
                     particleSystem.updateSpeed = 0.01;
-                    particleSystem.targetStopDuration = 0.5;
                     particleSystem.stop();
                     return particleSystem;
                 })(), 3);
@@ -1357,6 +1359,7 @@ window.addEventListener('DOMContentLoaded', () => {
             this.explosionParticleSystem = Player.PARTICLE_POOL.getResource();
             this.explosionParticleSystem.emitter = this.getPos();
             this.explosionParticleSystem.start();
+            setTimeout(() => this.explosionParticleSystem.stop(), 100);
             Player.SOUND_DEATH.play();
             this.onDeath.fire();
         }
